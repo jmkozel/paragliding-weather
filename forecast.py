@@ -295,44 +295,54 @@ def render_html(now, sites=SITES, loader=None):\n    if loader is None:\n       
 
 def main():
     now=datetime.now(TZ)
-    from pathlib import Path\n    cache_path=Path('forecast_cache.json')\n    if not cache_path.exists():\n        raise RuntimeError('Missing verified forecast cache; email not sent')\n    cached={(entry['lat'],entry['lon']):entry['data'] for entry in json.loads(cache_path.read_text(encoding='utf-8'))}\n    body,count,errors=build_report(now,loader=lambda lat,lon:cached[(lat,lon)])\n    if errors:\n        raise RuntimeError('Incomplete forecast; email not sent: '+str(errors))
-    print(body)
+    from pathlib import Path
+    cache_path=Path("forecast_cache.json")
+    if not cache_path.exists():
+        raise RuntimeError("Missing verified forecast cache; email not sent")
+    cached={(entry["lat"],entry["lon"]):entry["data"] for entry in json.loads(cache_path.read_text(encoding="utf-8"))}
+    by_day=defaultdict(list)
+    for site in SITES:
+        name,lat,lon,*_=site
+        data=cached[(lat,lon)]
+        for group in find_windows(site,data,now):
+            start,end=group[0][0],group[-1][1]
+            by_day[start.date()].append((name,start,end))
+    count=sum(len(rows) for rows in by_day.values())
+    url="https://jmkozel.github.io/paragliding-weather/"
     sender=os.getenv("SMTP_USER")
     password=os.getenv("SMTP_APP_PASSWORD")
     if not sender or not password:
-        print("\nEmail NOT sent: configure SMTP_USER and SMTP_APP_PASSWORD secrets.")
+        print("Email NOT sent: configure SMTP_USER and SMTP_APP_PASSWORD secrets.")
         return
-    url="https://jmkozel.github.io/paragliding-weather/"
     msg=EmailMessage()
     msg["From"]=sender
     msg["To"]=os.getenv("REPORT_TO","jmkozel@gmail.com")
-    msg["Subject"]=f"🪂 Paragliding | {now:%d.%m.%Y} | {count} kandidátních oken"
-    short=[f"🪂 LETOVÁ OKNA | {now:%d.%m.%Y}",
-           f"{count} kandidátních oken · výhled 5 dní", ""]
-    for line in body.splitlines():
-        if line=="PODROBNOSTI":break
-        if line and not line.startswith("🪂 PARAGLIDING") and not line.startswith("Modelový"):
-            short.append(line)
-    short+=["","Kompletní aktuální report: "+url,
-            "Pozor: kandidátní okno není potvrzení bezpečných podmínek."]
-    msg.set_content("\n".join(short))
-    esc=html.escape
-    blocks=["<html><body style='margin:0;padding:14px;background:#f3f6fa;font-family:Arial,sans-serif'>",
-            "<div style='max-width:640px;margin:auto;background:white'>",
-            "<div style='background:#193652;color:white;padding:16px;font-size:20px;font-weight:bold'>🪂 Letová okna</div>",
-            f"<div style='padding:15px'><div style='color:#5a6c7d;font-size:13px'>{now:%d.%m.%Y} · {count} kandidátních oken</div>"]
-    if count:
-        for line in short[2:]:
-            if line=="Kompletní aktuální report: "+url:break
-            if not line:continue
-            if line.startswith("  •"):
-                blocks.append(f"<div style='font-size:14px;padding:5px 0 5px 10px;border-bottom:1px solid #e8eef3'>{esc(line.strip(' •'))}</div>")
-            elif line[0].isalpha() and any(day in line for day in DAYS):
-                blocks.append(f"<div style='background:#eaf1f6;padding:7px;margin-top:10px;font-weight:bold;font-size:13px'>{esc(line)}</div>")
+    msg["Subject"]=f"🪂 Letová okna | {now:%d.%m.%Y} | {count} kandidátů"
+    lines=[f"🪂 LETOVÁ OKNA | {now:%d.%m.%Y}",f"{count} kandidátních oken během 5 dní",""]
+    blocks=["<html><body style='margin:0;padding:12px;background:#f2f6fa;font-family:Arial,sans-serif;color:#203044'>",
+            "<div style='max-width:620px;margin:auto;background:white'>",
+            "<div style='background:#193652;color:white;padding:15px;font-size:19px;font-weight:bold'>🪂 Letová okna · 5 dní</div>",
+            f"<div style='padding:14px'><p style='color:#64768a;font-size:13px'>{now:%d.%m.%Y} · {count} kandidátních oken</p>"]
+    if by_day:
+        for day in sorted(by_day):
+            heading=cz_day(day)
+            lines.extend([heading])
+            blocks.append(f"<div style='background:#eaf1f6;padding:8px;font-size:14px;font-weight:bold;margin-top:12px'>{html.escape(heading)}</div>")
+            blocks.append("<table role='presentation' style='width:100%;border-collapse:collapse'>")
+            for name,start,end in sorted(by_day[day],key=lambda x:x[1]):
+                hours=f"{fmt_time(start)}–{fmt_time(end)}"
+                lines.append(f"  {name}: {hours}")
+                blocks.append(f"<tr><td style='padding:7px 5px;border-bottom:1px solid #e8edf2;font-size:14px'>{html.escape(name)}</td><td style='text-align:right;white-space:nowrap;padding:7px 5px;border-bottom:1px solid #e8edf2;font-size:14px'><b>{hours}</b></td></tr>")
+            blocks.append("</table>")
+            lines.append("")
     else:
-        blocks.append("<p>Žádné kandidátní okno podle dostupných dat.</p>")
-    blocks.append(f"<p style='margin:20px 0'><a href='{url}' style='background:#205c84;color:white;padding:11px 17px;text-decoration:none;border-radius:6px;display:inline-block;font-weight:bold'>Otevřít aktuální report ↗</a></p>")
-    blocks.append("<p style='font-size:12px;color:#66788b'>Předběžný modelový screening. Před letem ověř aktuální podmínky.</p></div></div></body></html>")
+        lines.append("Žádné kandidátní okno podle dostupného modelu.")
+        blocks.append("<p>Žádné kandidátní okno podle dostupného modelu.</p>")
+    lines.extend(["","Podrobnosti a aktuální výhled: "+url,
+                  "Kandidát není potvrzení bezpečných podmínek."])
+    blocks.append(f"<p style='margin:20px 0'><a href='{url}' style='display:inline-block;background:#205c84;color:white;text-decoration:none;padding:11px 15px;border-radius:6px;font-weight:bold'>Zobrazit podrobná letová okna</a></p>")
+    blocks.append("<p style='font-size:12px;color:#66788b'>Automatický modelový screening, nikoli potvrzení bezpečného letu.</p></div></div></body></html>")
+    msg.set_content("\n".join(lines))
     msg.add_alternative("".join(blocks),subtype="html")
     with smtplib.SMTP_SSL("smtp.gmail.com",465,context=ssl.create_default_context(),timeout=30) as smtp:
         smtp.login(sender,password)
