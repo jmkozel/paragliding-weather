@@ -22,7 +22,10 @@ def build():
                     "m":metrics(cache[key],group),"lat":lat,"lon":lon})
         except Exception as exc:
             errors.append(f"{name}: {type(exc).__name__}: {exc}")
-    if errors:\n        raise RuntimeError('Incomplete weather data: '+ '; '.join(errors))\n    from pathlib import Path\n    Path('forecast_cache.json').write_text(json.dumps([{'lat':lat,'lon':lon,'data':data} for (lat,lon),data in cache.items()]),encoding='utf-8')\n    esc=html.escape
+    if errors:
+        raise RuntimeError('Incomplete weather data: '+ '; '.join(errors))
+    Path('forecast_cache.json').write_text(json.dumps([{'lat':lat,'lon':lon,'data':data} for (lat,lon),data in cache.items()]),encoding='utf-8')
+    esc=html.escape
     days=sorted(by_day)
     controls="".join(f'<button class="filter" data-day="{day.isoformat()}">{esc(cz_day(day))}</button>' for day in days)
     cards=[]
@@ -68,7 +71,7 @@ def build():
     .empty{{background:#fff;padding:20px;border-radius:9px}}
     </style></head><body><header><div style="font-size:12px;letter-spacing:1px">🪂 PARAGLIDING</div>
     <h1>Letová okna</h1><p>Výhled na 5 dní · aktualizováno {now:%d.%m.%Y v %H:%M} (Praha)</p></header>
-    <main><div class="summary"><span><b>{count}</b> kandidátních oken</span><span><b>{len(days)}</b> dní s okny</span><span><b>{len(SITES)-len(errors)}/{len(SITES)}</b> vyhodnocených sektorů</span></div>
+    <main><div class="summary"><span><b>{count}</b> podrobných letových oken</span><span><b>{len(days)}</b> dní s okny</span><span><b>{len(SITES)-len(errors)}/{len(SITES)}</b> vyhodnocených sektorů</span></div>
     <nav aria-label="Filtrovat podle dne"><button class="filter active" data-day="all">Všechny dny</button>{controls}</nav>
     <div class="grid">{''.join(cards)}</div>{empty}{errorblock}
     <footer><b>Bezpečnost:</b> Kandidátní okno je automatický screening, nikoli doporučení ke startu.
