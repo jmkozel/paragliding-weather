@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
-from forecast import SITES, fetch_all_sites, find_windows, metrics, cz_day, display_range
+from forecast import SITES, fetch_all_sites, find_windows, metrics, risk_notes, cz_day, display_range
 
 def build():
     now=datetime.now(ZoneInfo("Europe/Prague"))
@@ -19,7 +19,7 @@ def build():
                 by_day[group[0][0].date()].append({
                     "name":name,"start":group[0][0].strftime("%H:%M"),
                     "end":group[-1][1].strftime("%H:%M"),
-                    "m":metrics(cache[key],group),"lat":lat,"lon":lon})
+                    "m":metrics(cache[key],group),"notes":risk_notes(cache[key],group),"lat":lat,"lon":lon})
         except Exception as exc:
             errors.append(f"{name}: {type(exc).__name__}: {exc}")
     if errors:
@@ -34,15 +34,20 @@ def build():
             m=item["m"]
             def metric(key,unit="",digits=1):return esc(display_range(m[key],unit,digits))
             windy=f'https://www.windy.com/{item["lat"]:.3f}/{item["lon"]:.3f}?{item["lat"]:.3f},{item["lon"]:.3f},11'
-            cards.append(f"""<article class="window" data-day="{day.isoformat()}">
+            window_key=f'{day.isoformat()}|{item["name"]}|{item["start"]}'
+            notes=item["notes"]
+            risk_html=("<div class='risks'><b>Na co dát pozor:</b> "+ "; ".join(esc(x) for x in notes)+"</div>") if notes else "<div class='risks muted'>Bez dodatečných varovných signálů v těchto dílčích ukazatelích. Nejde o potvrzení bezpečnosti.</div>"
+            cards.append(f"""<article class="window" data-day="{day.isoformat()}" data-key="{esc(window_key,quote=True)}">
               <div class="head"><div><span class="day">{esc(cz_day(day))}</span><h2>{esc(item["name"])}</h2></div>
               <strong class="time">{item["start"]}–{item["end"]}</strong></div>
               <div class="numbers"><div><small>Vítr · odkud {metric("wind_direction_10m","°",0)}</small><b>{metric("wind_speed_10m"," m/s")}</b></div>
               <div><small>Nárazy</small><b>{metric("wind_gusts_10m"," m/s")}</b></div></div>
+              <div class="choices"><button type="button" class="watch" aria-pressed="false">☆ Sledovat</button><button type="button" class="exclude" aria-pressed="false">Nemůžu</button></div>
               <details><summary>Podrobnosti a kontrola před letem</summary>
               <div class="detail">Vítr 80 m: <b>{metric("wind_speed_80m"," m/s")}</b><br>
               Oblačnost: <b>{metric("cloud_cover"," %",0)}</b> · nízká: {metric("cloud_cover_low"," %",0)}<br>
               Pravděpodobnost srážek: <b>{metric("precipitation_probability"," %",0)}</b></div>
+              {risk_html}
               <a href="{windy}" target="_blank" rel="noopener noreferrer">Ověřit předpověď na Windy ↗</a>
               </details></article>""")
     count=len(cards)
@@ -69,19 +74,71 @@ def build():
     .detail{{line-height:1.9;padding:10px 0}}a{{color:#175c90}}.warning{{background:#fff0e7;padding:13px;border-radius:8px;margin:14px 0}}
     footer{{color:#60758a;font-size:12px;line-height:1.6;margin-top:22px;padding:15px 0;border-top:1px solid #d9e3ed}}
     .empty{{background:#fff;padding:20px;border-radius:9px}}
+    .choices{{display:flex;gap:8px;padding:0 14px 11px}}
+    .choices button{{font-size:12px;border-radius:7px}}
+    .choices button[aria-pressed="true"]{{background:#204d70;color:white}}
+    .risks{{margin:8px 0;padding:9px;background:#fff4e9;border-radius:6px;color:#684a30}}
+    .risks.muted{{background:#f0f4f7;color:#526779}}
+    .excluded-day{{display:none}}
+    .muted-note{{font-size:12px;color:#63758a;line-height:1.5;margin:10px 0}}
     </style></head><body><header><div style="font-size:12px;letter-spacing:1px">🪂 PARAGLIDING</div>
     <h1>Letová okna</h1><p>Výhled na 5 dní · aktualizováno {now:%d.%m.%Y v %H:%M} (Praha)</p></header>
     <main><div class="summary"><span><b>{count}</b> podrobných letových oken</span><span><b>{len(days)}</b> dní s okny</span><span><b>{len(SITES)-len(errors)}/{len(SITES)}</b> vyhodnocených sektorů</span></div>
+    <p class="muted-note">Volby Sledovat a Nemůžu se zatím ukládají pouze v tomto prohlížeči. Neovlivní ranní e-mail ani jiné zařízení.</p>
     <nav aria-label="Filtrovat podle dne"><button class="filter active" data-day="all">Všechny dny</button>{controls}</nav>
+    <div id="day-actions"></div><p id="hidden-info" class="muted-note"></p>
     <div class="grid">{''.join(cards)}</div>{empty}{errorblock}
     <footer><b>Bezpečnost:</b> Kandidátní okno je automatický screening, nikoli doporučení ke startu.
     Vždy ověř aktuální měření, výškový vítr, rotory, fronty a místní podmínky.
     Modelový vítr 10 m/80 m není měření na startovišti. Termika a XC nejsou spolehlivě vyhodnoceny.
     Web je veřejný a zatím pouze pro čtení. Sledování oken vyžaduje další zabezpečenou službu.</footer></main>
-    <script>document.querySelectorAll('.filter').forEach(btn=>btn.addEventListener('click',()=>{{
-      document.querySelectorAll('.filter').forEach(b=>b.classList.toggle('active',b===btn));
-      document.querySelectorAll('.window').forEach(c=>c.hidden=btn.dataset.day!=='all'&&c.dataset.day!==btn.dataset.day);
-    }}));</script></body></html>"""
+    <script>
+    (()=>{{
+      const prefix='pg-windows-v1';
+      const read=()=>{{try{{return JSON.parse(localStorage.getItem(prefix)||'{{}}')}}catch(e){{return {{}}}}}};
+      const state=read();
+      state.days ||= {{}};
+      state.windows ||= {{}};
+      const cards=[...document.querySelectorAll('.window')];
+      const filters=[...document.querySelectorAll('.filter')];
+      let active='all';
+      const save=()=>localStorage.setItem(prefix,JSON.stringify(state));
+      function render(){{
+        filters.forEach(b=>b.classList.toggle('active',b.dataset.day===active));
+        let hidden=0;
+        cards.forEach(card=>{{
+          const key=card.dataset.key, day=card.dataset.day;
+          const status=state.windows[key]||'';
+          const excluded=state.days[day]||status==='excluded';
+          if(excluded) hidden++;
+          card.hidden=excluded||(active!=='all'&&active!==day);
+          card.querySelector('.watch').setAttribute('aria-pressed',status==='watch'?'true':'false');
+          card.querySelector('.watch').textContent=status==='watch'?'★ Sledováno':'☆ Sledovat';
+        }});
+        document.getElementById('hidden-info').textContent=hidden?hidden+' skrytých oken (pouze v tomto prohlížeči).':'';
+        const area=document.getElementById('day-actions');
+        if(active==='all') area.innerHTML='';
+        else {{
+          const excluded=!!state.days[active];
+          area.innerHTML='<button id="day-toggle" type="button">'+(excluded?'Obnovit celý den':'Nemůžu celý den')+'</button>';
+          document.getElementById('day-toggle').onclick=()=>{{if(excluded)delete state.days[active];else state.days[active]=true;save();render();}};
+        }}
+      }}
+      filters.forEach(btn=>btn.addEventListener('click',()=>{{active=btn.dataset.day;render();}}));
+      cards.forEach(card=>{{
+        const key=card.dataset.key;
+        card.querySelector('.watch').addEventListener('click',()=>{{
+          if(state.windows[key]==='watch')delete state.windows[key];
+          else state.windows[key]='watch';
+          save();render();
+        }});
+        card.querySelector('.exclude').addEventListener('click',()=>{{
+          state.windows[key]='excluded';save();render();
+        }});
+      }});
+      render();
+    }})();
+    </script></body></html>"""
     out=Path("public");out.mkdir(exist_ok=True)
     (out/"index.html").write_text(doc,encoding="utf-8")
     (out/".nojekyll").write_text("",encoding="utf-8")
