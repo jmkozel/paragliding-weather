@@ -279,7 +279,7 @@ def main():
     sender=os.getenv("SMTP_USER")
     password=os.getenv("SMTP_APP_PASSWORD")
     if not sender or not password:
-        print("\\nEmail NOT sent: configure SMTP_USER and SMTP_APP_PASSWORD secrets.")
+        print("\nEmail NOT sent: configure SMTP_USER and SMTP_APP_PASSWORD secrets.")
         return
     url="https://jmkozel.github.io/paragliding-weather/"
     msg=EmailMessage()
@@ -294,7 +294,7 @@ def main():
             short.append(line)
     short+=["","Kompletní aktuální report: "+url,
             "Pozor: kandidátní okno není potvrzení bezpečných podmínek."]
-    msg.set_content("\\n".join(short))
+    msg.set_content("\n".join(short))
     esc=html.escape
     blocks=["<html><body style='margin:0;padding:14px;background:#f3f6fa;font-family:Arial,sans-serif'>",
             "<div style='max-width:640px;margin:auto;background:white'>",
