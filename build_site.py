@@ -5,10 +5,13 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
+from preferences import load, excluded
+from urllib.parse import quote
 from forecast import SITES, fetch_all_sites, find_windows, metrics, risk_notes, cz_day, display_range
 
 def build():
     now=datetime.now(ZoneInfo("Europe/Prague"))
+    prefs=load()
     by_day=defaultdict(list); cache=fetch_all_sites(); errors=[]
     for site in SITES:
         name,lat,lon,*_=site
@@ -34,15 +37,22 @@ def build():
             m=item["m"]
             def metric(key,unit="",digits=1):return esc(display_range(m[key],unit,digits))
             windy=f'https://www.windy.com/{item["lat"]:.3f}/{item["lon"]:.3f}?{item["lat"]:.3f},{item["lon"]:.3f},11'
-            window_key=f'{day.isoformat()}|{item["name"]}|{item["start"]}'
+            window_key=f'{day.isoformat()}|{item["name"]}'
+            is_excluded=excluded(prefs,day.isoformat(),item["name"])
+            is_watched=prefs["windows"].get(window_key)=="watch"
+            def issue_link(action,site):
+                title=f"PG|{action}|{day.isoformat()}|{site}"
+                return "https://github.com/jmkozel/paragliding-weather/issues/new?title="+quote(title,safe="")
+            watch_url=prefs["issue_urls"].get(window_key) if is_watched else issue_link("watch",item["name"])
+            exclude_url=prefs["issue_urls"].get(window_key) if is_excluded else issue_link("exclude",item["name"])
             notes=item["notes"]
             risk_html=("<div class='risks'><b>Na co dát pozor:</b> "+ "; ".join(esc(x) for x in notes)+"</div>") if notes else "<div class='risks muted'>Bez dodatečných varovných signálů v těchto dílčích ukazatelích. Nejde o potvrzení bezpečnosti.</div>"
-            cards.append(f"""<article class="window" data-day="{day.isoformat()}" data-key="{esc(window_key,quote=True)}">
+            cards.append(f"""<article class="window" data-day="{day.isoformat()}" data-key="{esc(window_key,quote=True)}" data-shared="{'excluded' if is_excluded else ('watch' if is_watched else '')}">
               <div class="head"><div><span class="day">{esc(cz_day(day))}</span><h2>{esc(item["name"])}</h2></div>
               <strong class="time">{item["start"]}–{item["end"]}</strong></div>
               <div class="numbers"><div><small>Vítr · odkud {metric("wind_direction_10m","°",0)}</small><b>{metric("wind_speed_10m"," m/s")}</b></div>
               <div><small>Nárazy</small><b>{metric("wind_gusts_10m"," m/s")}</b></div></div>
-              <div class="choices"><button type="button" class="watch" aria-pressed="false">☆ Sledovat</button><button type="button" class="exclude" aria-pressed="false">Nemůžu</button></div>
+              <div class="choices"><a href="{watch_url}" target="_blank">{'★ Sledováno · spravovat' if is_watched else '☆ Sledovat'}</a><a href="{exclude_url}" target="_blank">{'Obnovit · zavřít záznam' if is_excluded else 'Nemůžu'}</a></div>
               <details><summary>Podrobnosti a kontrola před letem</summary>
               <div class="detail">Vítr 80 m: <b>{metric("wind_speed_80m"," m/s")}</b><br>
               Oblačnost: <b>{metric("cloud_cover"," %",0)}</b> · nízká: {metric("cloud_cover_low"," %",0)}<br>
