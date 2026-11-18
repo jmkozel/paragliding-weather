@@ -44,7 +44,7 @@ def build():
                 title=f"PG|{action}|{day.isoformat()}|{site}"
                 return "https://github.com/jmkozel/paragliding-weather/issues/new?title="+quote(title,safe="")
             watch_url=prefs["issue_urls"].get(window_key) if is_watched else issue_link("watch",item["name"])
-            exclude_url=prefs["issue_urls"].get(window_key) if is_excluded else issue_link("exclude",item["name"])
+            exclude_url=prefs["issue_urls"].get(window_key) if is_excluded and not prefs["days"].get(day.isoformat()) else issue_link("exclude",item["name"])
             notes=item["notes"]
             risk_html=("<div class='risks'><b>Na co dát pozor:</b> "+ "; ".join(esc(x) for x in notes)+"</div>") if notes else "<div class='risks muted'>Bez dodatečných varovných signálů v těchto dílčích ukazatelích. Nejde o potvrzení bezpečnosti.</div>"
             cards.append(f"""<article class="window" data-day="{day.isoformat()}" data-key="{esc(window_key,quote=True)}" data-shared="{'excluded' if is_excluded else ('watch' if is_watched else '')}">
@@ -108,7 +108,6 @@ def build():
       const filters=[...document.querySelectorAll('.filter')];
       const cards=[...document.querySelectorAll('.window')];
       let active='all';
-      const days={};
       const sharedDays={json.dumps(prefs["days"])};
       function render(){{
         filters.forEach(b=>b.classList.toggle('active',b.dataset.day===active));
