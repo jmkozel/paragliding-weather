@@ -7,27 +7,32 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 from preferences import load, excluded
 from urllib.parse import quote
-from forecast import SITES, fetch_all_sites, find_windows, metrics, risk_notes, cz_day, display_range
+from forecast import SITES, fetch_all_sites, fetch_model_comparison, consensus_windows, metrics, risk_notes, cz_day, display_range
 
 def build():
     now=datetime.now(ZoneInfo("Europe/Prague"))
     prefs=load()
-    by_day=defaultdict(list); cache=fetch_all_sites(); errors=[]
+    by_day=defaultdict(list); cache=fetch_all_sites(); comparison=fetch_model_comparison(); errors=[]
     for site in SITES:
         name,lat,lon,*_=site
         try:
             key=(lat,lon)
             if key not in cache: raise ValueError('Missing location in batch response')
-            for group in find_windows(site,cache[key],now):
+            groups,consensus=consensus_windows(site,cache[key],comparison[key],now)
+            for group in groups:
                 by_day[group[0][0].date()].append({
                     "name":name,"start":group[0][0].strftime("%H:%M"),
                     "end":group[-1][1].strftime("%H:%M"),
-                    "m":metrics(cache[key],group),"notes":risk_notes(cache[key],group),"lat":lat,"lon":lon})
+                    "m":metrics(cache[key],group),"notes":risk_notes(cache[key],group),
+                    "models":[{"model":name,"wind":min(r["wind"] for r in [consensus[i][1][j] for i in [part[2] for part in group]]),
+                               "gust":max(r["gust"] for r in [consensus[i][1][j] for i in [part[2] for part in group]])}
+                              for j,name in enumerate(comparison[key])],
+                    "lat":lat,"lon":lon})
         except Exception as exc:
             errors.append(f"{name}: {type(exc).__name__}: {exc}")
     if errors:
         raise RuntimeError('Incomplete weather data: '+ '; '.join(errors))
-    Path('forecast_cache.json').write_text(json.dumps([{'lat':lat,'lon':lon,'data':data} for (lat,lon),data in cache.items()]),encoding='utf-8')
+    Path('forecast_cache.json').write_text(json.dumps([{'lat':lat,'lon':lon,'data':data,'models':comparison[(lat,lon)]} for (lat,lon),data in cache.items()]),encoding='utf-8')
     esc=html.escape
     days=sorted(by_day)
     controls="".join(f'<button class="filter" data-day="{day.isoformat()}">{esc(cz_day(day))}</button>' for day in days)
@@ -46,6 +51,7 @@ def build():
             watch_url=prefs["issue_urls"].get(window_key) if is_watched else issue_link("watch",item["name"])
             exclude_url=prefs["issue_urls"].get(window_key) if is_excluded and not prefs["days"].get(day.isoformat()) else issue_link("exclude",item["name"])
             notes=item["notes"]
+            model_table="<div class='risks muted'><b>Modely: vítr / max. náraz (m/s)</b><br>"+ "<br>".join(f"{esc(row['model'])}: {row['wind']:.1f} / {row['gust']:.1f}" for row in item["models"])+"</div>"
             risk_html=("<div class='risks'><b>Na co dát pozor:</b> "+ "; ".join(esc(x) for x in notes)+"</div>") if notes else "<div class='risks muted'>Bez dodatečných varovných signálů v těchto dílčích ukazatelích. Nejde o potvrzení bezpečnosti.</div>"
             cards.append(f"""<article class="window" data-day="{day.isoformat()}" data-key="{esc(window_key,quote=True)}" data-shared="{'excluded' if is_excluded else ('watch' if is_watched else '')}">
               <div class="head"><div><span class="day">{esc(cz_day(day))}</span><h2>{esc(item["name"])}</h2></div>
@@ -57,7 +63,7 @@ def build():
               <div class="detail">Vítr 80 m: <b>{metric("wind_speed_80m"," m/s")}</b><br>
               Oblačnost: <b>{metric("cloud_cover"," %",0)}</b> · nízká: {metric("cloud_cover_low"," %",0)}<br>
               Pravděpodobnost srážek: <b>{metric("precipitation_probability"," %",0)}</b></div>
-              {risk_html}
+              {risk_html}{model_table}
               <a href="{windy}" target="_blank" rel="noopener noreferrer">Ověřit předpověď na Windy ↗</a>
               </details></article>""")
     count=len(cards)
@@ -94,6 +100,7 @@ def build():
     </style></head><body><header><div style="font-size:12px;letter-spacing:1px">🪂 PARAGLIDING</div>
     <h1>Letová okna</h1><p>Výhled na 5 dní · aktualizováno {now:%d.%m.%Y v %H:%M} (Praha)</p></header>
     <main><div class="summary"><span><b>{count}</b> podrobných letových oken</span><span><b>{len(days)}</b> dní s okny</span><span><b>{len(SITES)-len(errors)}/{len(SITES)}</b> vyhodnocených sektorů</span></div>
+    <p class="muted-note">V hlavním přehledu jsou pouze okna, kde alespoň 3 ze 4 modelů splňují místní limity a žádný neukazuje výrazný exces. Navíc platí základní meteorologické filtry. Modely nejsou nezávislé a jejich shoda nezaručuje bezpečný let.</p>
     <p class="muted-note">Volbu potvrď na GitHubu tlačítkem Submit new issue. Pro obnovení zavři příslušný issue. Změny se projeví při další aktualizaci.</p>
     <nav aria-label="Filtrovat podle dne"><button class="filter active" data-day="all">Všechny dny</button>{controls}</nav>
     <div id="day-actions"></div><p id="hidden-info" class="muted-note"></p>
