@@ -295,7 +295,7 @@ def render_html(now, sites=SITES, loader=None):\n    if loader is None:\n       
 
 def main():
     now=datetime.now(TZ)
-    body,count,errors=build_report(now)
+    from pathlib import Path\n    cache_path=Path('forecast_cache.json')\n    if not cache_path.exists():\n        raise RuntimeError('Missing verified forecast cache; email not sent')\n    cached={(entry['lat'],entry['lon']):entry['data'] for entry in json.loads(cache_path.read_text(encoding='utf-8'))}\n    body,count,errors=build_report(now,loader=lambda lat,lon:cached[(lat,lon)])\n    if errors:\n        raise RuntimeError('Incomplete forecast; email not sent: '+str(errors))
     print(body)
     sender=os.getenv("SMTP_USER")
     password=os.getenv("SMTP_APP_PASSWORD")
