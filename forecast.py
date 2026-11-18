@@ -421,14 +421,17 @@ def main():
     cache_path=Path("forecast_cache.json")
     if not cache_path.exists():
         raise RuntimeError("Missing verified forecast cache; email not sent")
-    cached={(entry["lat"],entry["lon"]):entry["data"] for entry in json.loads(cache_path.read_text(encoding="utf-8"))}
+    entries=json.loads(cache_path.read_text(encoding="utf-8"))
+    cached={(entry["lat"],entry["lon"]):entry["data"] for entry in entries}
+    model_data={(entry["lat"],entry["lon"]):entry["models"] for entry in entries}
     from preferences import load, excluded
     prefs=load()
     by_day=defaultdict(list)
     for site in SITES:
         name,lat,lon,*_=site
         data=cached[(lat,lon)]
-        for group in find_windows(site,data,now):
+        groups,_=consensus_windows(site,data,model_data[(lat,lon)],now)
+        for group in groups:
             start,end=group[0][0],group[-1][1]
             if excluded(prefs,start.date().isoformat(),name): continue
             by_day[start.date()].append((name,start,end))
