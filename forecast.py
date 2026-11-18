@@ -279,14 +279,40 @@ def main():
     sender=os.getenv("SMTP_USER")
     password=os.getenv("SMTP_APP_PASSWORD")
     if not sender or not password:
-        print("\nEmail NOT sent: configure SMTP_USER and SMTP_APP_PASSWORD secrets.")
+        print("\\nEmail NOT sent: configure SMTP_USER and SMTP_APP_PASSWORD secrets.")
         return
+    url="https://jmkozel.github.io/paragliding-weather/"
     msg=EmailMessage()
     msg["From"]=sender
     msg["To"]=os.getenv("REPORT_TO","jmkozel@gmail.com")
     msg["Subject"]=f"🪂 Paragliding | {now:%d.%m.%Y} | {count} kandidátních oken"
-    msg.set_content(body)
-    msg.add_alternative(render_html(now),subtype="html")
+    short=[f"🪂 LETOVÁ OKNA | {now:%d.%m.%Y}",
+           f"{count} kandidátních oken · výhled 5 dní", ""]
+    for line in body.splitlines():
+        if line=="PODROBNOSTI":break
+        if line and not line.startswith("🪂 PARAGLIDING") and not line.startswith("Modelový"):
+            short.append(line)
+    short+=["","Kompletní aktuální report: "+url,
+            "Pozor: kandidátní okno není potvrzení bezpečných podmínek."]
+    msg.set_content("\\n".join(short))
+    esc=html.escape
+    blocks=["<html><body style='margin:0;padding:14px;background:#f3f6fa;font-family:Arial,sans-serif'>",
+            "<div style='max-width:640px;margin:auto;background:white'>",
+            "<div style='background:#193652;color:white;padding:16px;font-size:20px;font-weight:bold'>🪂 Letová okna</div>",
+            f"<div style='padding:15px'><div style='color:#5a6c7d;font-size:13px'>{now:%d.%m.%Y} · {count} kandidátních oken</div>"]
+    if count:
+        for line in short[2:]:
+            if line=="Kompletní aktuální report: "+url:break
+            if not line:continue
+            if line.startswith("  •"):
+                blocks.append(f"<div style='font-size:14px;padding:5px 0 5px 10px;border-bottom:1px solid #e8eef3'>{esc(line.strip(' •'))}</div>")
+            elif line[0].isalpha() and any(day in line for day in DAYS):
+                blocks.append(f"<div style='background:#eaf1f6;padding:7px;margin-top:10px;font-weight:bold;font-size:13px'>{esc(line)}</div>")
+    else:
+        blocks.append("<p>Žádné kandidátní okno podle dostupných dat.</p>")
+    blocks.append(f"<p style='margin:20px 0'><a href='{url}' style='background:#205c84;color:white;padding:11px 17px;text-decoration:none;border-radius:6px;display:inline-block;font-weight:bold'>Otevřít aktuální report ↗</a></p>")
+    blocks.append("<p style='font-size:12px;color:#66788b'>Předběžný modelový screening. Před letem ověř aktuální podmínky.</p></div></div></body></html>")
+    msg.add_alternative("".join(blocks),subtype="html")
     with smtplib.SMTP_SSL("smtp.gmail.com",465,context=ssl.create_default_context(),timeout=30) as smtp:
         smtp.login(sender,password)
         smtp.send_message(msg)
