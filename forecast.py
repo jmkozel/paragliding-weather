@@ -208,7 +208,7 @@ def display_range(value, unit="", digits=1):
     return f"{a:.{digits}f}–{b:.{digits}f}{unit}" if abs(a-b)>0.049 else f"{a:.{digits}f}{unit}"
 
 def render_html(now, sites=SITES, loader=fetch):
-    """Email-safe table layout. Reuses the exact same flight window screening."""
+    """Compact HTML email with real in-message navigation links (no fake watch buttons)."""
     by_day=defaultdict(list); errors=[]; cache={}
     for site in sites:
         name,lat,lon,*_=site
@@ -223,30 +223,34 @@ def render_html(now, sites=SITES, loader=fetch):
             errors.append(f"{name}: {type(exc).__name__}: {exc}")
     esc=html.escape
     parts=["<!doctype html><html lang='cs'><head><meta charset='utf-8'></head>",
-           "<body style='margin:0;padding:22px 10px;background:#f3f6fa;font-family:Arial,Helvetica,sans-serif;color:#203044'>",
-           "<table role='presentation' cellpadding='0' cellspacing='0' border='0' style='max-width:720px;width:100%;margin:auto;border-collapse:collapse'>",
-           "<tr><td style='padding:22px 22px 18px;background:#16324f;color:white;border-radius:12px 12px 0 0'>",
-           "<div style='font-size:13px;color:#d7e7f3;letter-spacing:1px'>PARAGLIDING · PĚTIDENNÍ VÝHLED</div>",
-           f"<div style='font-size:25px;font-weight:bold;margin-top:8px'>{now:%d.%m.%Y}</div>",
-           "<div style='font-size:13px;margin-top:8px;color:#d7e7f3'>Kandidátní okna podle modelu Open-Meteo, ne potvrzení bezpečného letu</div>",
-           "</td></tr><tr><td style='padding:20px;background:white'>"]
+           "<body style='margin:0;padding:10px 6px;background:#f3f6fa;font-family:Arial,Helvetica,sans-serif;color:#203044'>",
+           "<table role='presentation' cellpadding='0' cellspacing='0' style='max-width:690px;width:100%;margin:auto;border-collapse:collapse'>",
+           "<tr><td style='padding:13px 17px;background:#16324f;color:#fff'>",
+           "<div style='font-size:12px;letter-spacing:.6px;color:#d7e7f3'>🪂 PARAGLIDING · 5 DNÍ</div>",
+           f"<div style='font-size:20px;font-weight:bold;margin-top:3px'>{now:%d.%m.%Y}</div>",
+           "</td></tr><tr><td style='padding:14px 16px;background:white'>"]
     count=sum(len(v) for v in by_day.values())
-    parts.append(f"<div style='font-size:15px;color:#586a7e;margin-bottom:16px'><b>{count} kandidátních oken</b> · {len(by_day)} dní s možnými podmínkami · aktualizace {now:%H:%M}</div>")
+    parts.append(f"<div style='font-size:13px;color:#586a7e;margin-bottom:9px'><b>{count} kandidátních oken</b> · {len(by_day)} dní · aktualizace {now:%H:%M}</div>")
     if not by_day:
-        parts.append("<p style='font-size:16px'>Žádné kandidátní okno alespoň 60 minut podle dostupného modelu. Neznamená to automaticky nelétatelné počasí.</p>")
+        parts.append("<p style='font-size:14px'>Žádné kandidátní okno alespoň 60 minut podle dostupného modelu. Neznamená to automaticky nelétatelné počasí.</p>")
     else:
-        parts.append("<h2 style='font-size:19px;margin:0 0 12px'>Rychlý přehled</h2>")
+        parts.append("<div style='font-size:16px;font-weight:bold;margin:10px 0 7px'>Přehled</div>")
         for day in sorted(by_day):
-            parts.append(f"<div style='font-size:15px;font-weight:bold;background:#e9f1f7;padding:10px 12px;margin-top:14px;border-radius:6px'>{cz_day(day)}</div>")
+            day_id=f"day-{day:%Y%m%d}"
+            parts.append(f"<div style='background:#eaf1f6;padding:7px 9px;font-size:13px;font-weight:bold;margin-top:9px'>{cz_day(day)}</div>")
             parts.append("<table role='presentation' cellpadding='0' cellspacing='0' style='width:100%;border-collapse:collapse'>")
             for name,start,end,m in sorted(by_day[day],key=lambda x:x[1]):
-                parts.append("<tr style='border-bottom:1px solid #e5ebf0'>")
-                parts.append(f"<td style='padding:10px 8px;font-size:14px'><b>{esc(name)}</b></td>")
-                parts.append(f"<td style='padding:10px 8px;text-align:right;white-space:nowrap;font-size:15px;font-weight:bold'>{fmt_time(start)}–{fmt_time(end)}</td></tr>")
+                key=f"w-{day:%Y%m%d}-{start:%H%M}-{len(parts)}"
+                # A same-message anchor is useful in many email clients; some may ignore it.
+                parts.append("<tr><td style='padding:6px 7px;border-bottom:1px solid #e7ecf1;font-size:13px'>")
+                parts.append(f"<a href='#{key}' style='color:#173f63;text-decoration:underline'>{esc(name)}</a></td>")
+                parts.append(f"<td style='padding:6px 7px;text-align:right;white-space:nowrap;border-bottom:1px solid #e7ecf1;font-size:13px'><b>{fmt_time(start)}–{fmt_time(end)}</b></td></tr>")
+                # Retain stable link id for details by storing it alongside the matching row.
+                m["_anchor"]=key
             parts.append("</table>")
-        parts.append("<h2 style='font-size:19px;margin:28px 0 10px'>Podrobnosti o oknech</h2>")
+        parts.append("<div style='font-size:16px;font-weight:bold;margin:18px 0 8px'>Detaily</div>")
         for day in sorted(by_day):
-            parts.append(f"<h3 style='font-size:15px;margin:20px 0 8px;color:#38516b'>{cz_day(day)}</h3>")
+            parts.append(f"<div style='font-size:13px;font-weight:bold;color:#3c5570;margin:14px 0 5px'>{cz_day(day)}</div>")
             for name,start,end,m in sorted(by_day[day],key=lambda x:x[1]):
                 wind=display_range(m["wind_speed_10m"]," m/s")
                 gust=display_range(m["wind_gusts_10m"]," m/s")
@@ -255,17 +259,16 @@ def render_html(now, sites=SITES, loader=fetch):
                 cloud=display_range(m["cloud_cover"]," %",0)
                 low=display_range(m["cloud_cover_low"]," %",0)
                 rain=display_range(m["precipitation_probability"]," %",0)
-                parts.append("<table role='presentation' cellpadding='0' cellspacing='0' style='width:100%;border:1px solid #dbe4ed;border-radius:8px;border-collapse:separate;margin:10px 0 14px'>")
-                parts.append(f"<tr><td colspan='2' style='background:#f0f5f9;padding:12px 14px;font-size:16px'><b>{esc(name)}</b><span style='float:right;font-weight:bold'>{fmt_time(start)}–{fmt_time(end)}</span></td></tr>")
-                parts.append(f"<tr><td style='padding:10px 14px;font-size:13px;width:50%;vertical-align:top'><span style='color:#617386'>Vítr 10 m</span><br><b style='font-size:16px'>{wind}</b><br><span style='color:#617386'>Směr odkud: {direction}</span></td><td style='padding:10px 14px;font-size:13px;vertical-align:top'><span style='color:#617386'>Nárazy</span><br><b style='font-size:16px'>{gust}</b></td></tr>")
-                parts.append(f"<tr><td style='padding:8px 14px;font-size:13px;vertical-align:top'>Vítr 80 m: <b>{upper}</b></td><td style='padding:8px 14px;font-size:13px;vertical-align:top'>Srážky (pravd.): <b>{rain}</b></td></tr>")
-                parts.append(f"<tr><td colspan='2' style='padding:8px 14px 12px;font-size:13px;color:#526478'>Oblačnost: {cloud} · nízká: {low}</td></tr></table>")
+                parts.append(f"<table id='{m['_anchor']}' role='presentation' cellpadding='0' cellspacing='0' style='width:100%;border:1px solid #dce5ec;border-collapse:separate;margin:6px 0 8px'>")
+                parts.append(f"<tr><td colspan='2' style='background:#f0f5f9;padding:7px 10px;font-size:14px'><b>{esc(name)}</b><span style='float:right'>{fmt_time(start)}–{fmt_time(end)}</span></td></tr>")
+                parts.append(f"<tr><td style='padding:7px 10px 3px;font-size:13px;width:50%;vertical-align:top'>Vítr <b>{wind}</b><br><span style='color:#63758a'>Odkud {direction}</span></td><td style='padding:7px 10px 3px;font-size:13px;vertical-align:top'>Nárazy <b>{gust}</b><br><span style='color:#63758a'>80 m: {upper}</span></td></tr>")
+                parts.append(f"<tr><td colspan='2' style='padding:3px 10px 9px;font-size:12px;color:#586b80'>Oblačnost {cloud} (nízká {low}) · srážky {rain}</td></tr></table>")
     if errors:
-        parts.append("<div style='padding:12px;background:#fff1e9;border-left:3px solid #d36a36;margin-top:18px'><b>Neúplná data</b><br>")
+        parts.append("<div style='padding:9px;background:#fff1e9;border-left:3px solid #d36a36;margin-top:12px;font-size:12px'><b>Chyby dat</b><br>")
         parts.append("<br>".join(esc(e) for e in errors)+"</div>")
-    parts.append("<div style='font-size:12px;line-height:1.6;color:#657789;margin-top:24px;padding-top:15px;border-top:1px solid #dbe4ed'>")
-    parts.append("Pouze denní světlo, minimálně 60 minut. Modelový vítr v 10 a 80 m nenahrazuje měření na startu ani výškový profil. "
-                 "Turbulence, rotory, fronty a termika/XC nejsou spolehlivě vyhodnoceny. Před letem ověř místní podmínky a aktuální měření.")
+    parts.append("<div style='font-size:11px;line-height:1.5;color:#657789;margin-top:14px;padding-top:9px;border-top:1px solid #dbe4ed'>")
+    parts.append("Kandidát podle modelu ≠ bezpečný let. Jen mezi východem a západem slunce, min. 60 minut. "
+                 "Vítr 10/80 m není měření na startu; rotory, fronty a termika/XC nejsou spolehlivě posouzeny.")
     parts.append("</div></td></tr></table></body></html>")
     return "".join(parts)
 
