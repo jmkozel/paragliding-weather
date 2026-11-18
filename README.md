@@ -1,6 +1,6 @@
 # Paragliding Weather | denní e-mail
 
-Automatický pětidenni screening všech 13 sektorů (11 místních terénů) podle uživatelských limitů větru a nárazů.
+Automatický pětidenni screening všech 13 sektorů (10 terénů) podle uživatelských limitů větru a nárazů.
 
 ## Co se vyhodnocuje
 - Cukrák, Staňkovka, Karlík, Řevničov, Suchomasty/Klonk, Raná JV/SZ, Jeviněves, Říp JV/JZ/SZ, Koukolova hora, Beroun/vysílač.
