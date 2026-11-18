@@ -107,6 +107,32 @@ def screening(site, h, i):
         return False, "zvýšený konvektivní potenciál"
     return True, ""
 
+def risk_notes(data, group):
+    """Heuristic warnings, not a local turbulence or flight-safety prediction."""
+    h=data["hourly"]
+    notes=[]
+    for _,_,i in group:
+        w=get(h,"wind_speed_10m",i)
+        gust=get(h,"wind_gusts_10m",i)
+        d10=get(h,"wind_direction_10m",i)
+        d80=get(h,"wind_direction_80m",i)
+        upper=get(h,"wind_speed_80m",i)
+        low=get(h,"cloud_cover_low",i)
+        prob=get(h,"precipitation_probability",i)
+        if w is not None and gust is not None and w>0 and gust/w>=2.0:
+            notes.append("Výrazné nárazy vůči průměrnému větru")
+        if d10 is not None and d80 is not None:
+            difference=abs((d80-d10+180)%360-180)
+            if difference>=35:
+                notes.append("Výrazná změna směru větru mezi 10 a 80 m")
+        if w is not None and upper is not None and upper-w>=4:
+            notes.append("Zřetelný nárůst rychlosti větru v 80 m")
+        if low is not None and low>=90:
+            notes.append("Velmi vysoká nízká oblačnost; ověř výšku základny a dohlednost")
+        if prob is not None and prob>=40:
+            notes.append("Zvýšená pravděpodobnost srážek")
+    return list(dict.fromkeys(notes))
+
 def solar_intervals(data):
     daily=data["daily"]
     return {d:(datetime.fromisoformat(a),datetime.fromisoformat(b))
