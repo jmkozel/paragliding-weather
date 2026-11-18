@@ -1,34 +1,45 @@
-name: Daily paragliding forecast
+name: Paragliding forecast and public web
 on:
   schedule:
-    # 07:00 Prague: 06:00 UTC winter, 05:00 UTC summer.
-    # Both cron entries run; Python guard ensures local 07:00 only.
+    # Refresh website every three hours, plus 07:00 local daily.
+    - cron: '17 */3 * * *'
     - cron: '0 5,6 * * *'
   workflow_dispatch:
 permissions:
   contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: paragliding-pages
+  cancel-in-progress: false
 jobs:
-  report:
+  publish:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Only 07:00 in Prague on scheduled runs
-        id: gate
+      - name: Build public weather report
+        run: python build_site.py
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - id: deployment
+        uses: actions/deploy-pages@v4
+      - name: Send morning email only
         env:
           EVENT_NAME: ${{ github.event_name }}
-        run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$(TZ=Europe/Prague date +%H)" = "07" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Fetch and report
-        if: steps.gate.outputs.run == 'true'
-        env:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_APP_PASSWORD: ${{ secrets.SMTP_APP_PASSWORD }}
           REPORT_TO: jmkozel@gmail.com
-        run: python forecast.py
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$(TZ=Europe/Prague date +%H)" = "07" ]; then
+            python forecast.py
+          else
+            echo "Website refreshed; no email outside 07:00 Prague."
+          fi
