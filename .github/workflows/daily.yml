@@ -23,7 +23,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Build public weather report
+      - name: Check Python syntax\n        run: python -m py_compile forecast.py build_site.py\n      - name: Build public weather report
         run: python build_site.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
