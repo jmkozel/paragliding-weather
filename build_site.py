@@ -5,16 +5,16 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
-from forecast import SITES, fetch, find_windows, metrics, cz_day, display_range
+from forecast import SITES, fetch_all_sites, find_windows, metrics, cz_day, display_range
 
 def build():
     now=datetime.now(ZoneInfo("Europe/Prague"))
-    by_day=defaultdict(list); cache={}; errors=[]
+    by_day=defaultdict(list); cache=fetch_all_sites(); errors=[]
     for site in SITES:
         name,lat,lon,*_=site
         try:
             key=(lat,lon)
-            if key not in cache: cache[key]=fetch(lat,lon)
+            if key not in cache: raise ValueError('Missing location in batch response')
             for group in find_windows(site,cache[key],now):
                 by_day[group[0][0].date()].append({
                     "name":name,"start":group[0][0].strftime("%H:%M"),
@@ -22,7 +22,7 @@ def build():
                     "m":metrics(cache[key],group),"lat":lat,"lon":lon})
         except Exception as exc:
             errors.append(f"{name}: {type(exc).__name__}: {exc}")
-    esc=html.escape
+    if errors:\n        raise RuntimeError('Incomplete weather data: '+ '; '.join(errors))\n    esc=html.escape
     days=sorted(by_day)
     controls="".join(f'<button class="filter" data-day="{day.isoformat()}">{esc(cz_day(day))}</button>' for day in days)
     cards=[]
