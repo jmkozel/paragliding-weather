@@ -52,6 +52,27 @@ def fetch(lat, lon):
         raise ValueError("Open-Meteo nevrátilo hodinová/denní data")
     return obj
 
+def fetch_all_sites():
+    """One multi-location Open-Meteo request; avoids 10+ requests per run."""
+    locations=list(dict.fromkeys((s[1],s[2]) for s in SITES))
+    args={
+        "latitude":",".join(str(p[0]) for p in locations),
+        "longitude":",".join(str(p[1]) for p in locations),
+        "timezone":"Europe/Prague",
+        "forecast_days":5,"wind_speed_unit":"ms",
+        "hourly":",".join(HOURLY),"daily":"sunrise,sunset",
+    }
+    url="https://api.open-meteo.com/v1/forecast?"+urllib.parse.urlencode(args)
+    req=urllib.request.Request(url,headers={"User-Agent":"paragliding-weather/1.0"})
+    with urllib.request.urlopen(req,timeout=60) as response:
+        payload=json.load(response)
+    results=payload if isinstance(payload,list) else [payload]
+    if len(results)!=len(locations):
+        raise ValueError(f"Expected {len(locations)} locations, got {len(results)}")
+    if any("hourly" not in result or "daily" not in result for result in results):
+        raise ValueError("Incomplete Open-Meteo multi-location response")
+    return dict(zip(locations,results))
+
 def direction_ok(direction, ranges):
     return any(lo <= direction <= hi for lo,hi in ranges)
 
@@ -137,7 +158,7 @@ def window_details(site, data, group):
             f"oblačnost {span(cloud,' %',0)} (nízká {span(low,' %',0)}); "
             f"pravd. srážek {span(rain,' %',0)}")
 
-def build_report(now, sites=SITES, loader=fetch):
+def build_report(now, sites=SITES, loader=None):\n    if loader is None:\n        shared=fetch_all_sites()\n        loader=lambda lat,lon:shared[(lat,lon)]
     by_day=defaultdict(list); errors=[]; checked=0
     cache={}
     for site in sites:
@@ -207,7 +228,7 @@ def display_range(value, unit="", digits=1):
     a,b=value
     return f"{a:.{digits}f}–{b:.{digits}f}{unit}" if abs(a-b)>0.049 else f"{a:.{digits}f}{unit}"
 
-def render_html(now, sites=SITES, loader=fetch):
+def render_html(now, sites=SITES, loader=None):\n    if loader is None:\n        shared=fetch_all_sites()\n        loader=lambda lat,lon:shared[(lat,lon)]
     """Compact HTML email with real in-message navigation links (no fake watch buttons)."""
     by_day=defaultdict(list); errors=[]; cache={}
     for site in sites:
