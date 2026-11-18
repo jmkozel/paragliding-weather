@@ -332,12 +332,15 @@ def main():
     if not cache_path.exists():
         raise RuntimeError("Missing verified forecast cache; email not sent")
     cached={(entry["lat"],entry["lon"]):entry["data"] for entry in json.loads(cache_path.read_text(encoding="utf-8"))}
+    from preferences import load, excluded
+    prefs=load()
     by_day=defaultdict(list)
     for site in SITES:
         name,lat,lon,*_=site
         data=cached[(lat,lon)]
         for group in find_windows(site,data,now):
             start,end=group[0][0],group[-1][1]
+            if excluded(prefs,start.date().isoformat(),name): continue
             by_day[start.date()].append((name,start,end))
     count=sum(len(rows) for rows in by_day.values())
     url="https://jmkozel.github.io/paragliding-weather/"
