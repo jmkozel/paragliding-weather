@@ -80,7 +80,7 @@ MODELS = {
     "GFS": "gfs_seamless",
 }
 # Separate model calls make the response schema explicit. Fail closed on errors.
-MODEL_HOURLY = ["wind_speed_10m", "wind_direction_10m", "wind_gusts_10m"]
+MODEL_HOURLY = ["wind_speed_10m", "wind_direction_10m", "wind_gusts_10m", "precipitation"]
 
 def fetch_model_comparison():
     locations=list(dict.fromkeys((s[1],s[2]) for s in SITES))
@@ -121,14 +121,15 @@ def model_consensus(site, models, time):
             w=h["wind_speed_10m"][i]
             d=h["wind_direction_10m"][i]
             g=h["wind_gusts_10m"][i]
-            if None in (w,d,g): raise ValueError("missing")
-            passed=minimum<=w<=maximum and g<=gust_limit and direction_ok(d,ranges)
-            severe=w>maximum+2 or g>gust_limit+3
-            rows.append({"model":label,"wind":w,"direction":d,"gust":g,
+            rain=h["precipitation"][i]
+            if None in (w,d,g,rain): raise ValueError("missing")
+            passed=minimum<=w<=maximum and g<=gust_limit and direction_ok(d,ranges) and rain<=0.1
+            severe=w>maximum+2 or g>gust_limit+3 or rain>=0.5
+            rows.append({"model":label,"wind":w,"direction":d,"gust":g,"rain":rain,
                          "pass":passed,"severe":severe})
         except (ValueError,IndexError,KeyError,TypeError):
             rows.append({"model":label,"wind":None,"direction":None,
-                         "gust":None,"pass":False,"severe":True})
+                         "gust":None,"rain":None,"pass":False,"severe":True})
     good=sum(row["pass"] for row in rows)
     severe=any(row["severe"] for row in rows)
     status="good" if good>=3 and not severe else ("uncertain" if good>=2 and not severe else "bad")
