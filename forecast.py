@@ -158,7 +158,10 @@ def window_details(site, data, group):
             f"oblačnost {span(cloud,' %',0)} (nízká {span(low,' %',0)}); "
             f"pravd. srážek {span(rain,' %',0)}")
 
-def build_report(now, sites=SITES, loader=None):\n    if loader is None:\n        shared=fetch_all_sites()\n        loader=lambda lat,lon:shared[(lat,lon)]
+def build_report(now, sites=SITES, loader=None):
+    if loader is None:
+        shared=fetch_all_sites()
+        loader=lambda lat,lon:shared[(lat,lon)]
     by_day=defaultdict(list); errors=[]; checked=0
     cache={}
     for site in sites:
@@ -228,7 +231,10 @@ def display_range(value, unit="", digits=1):
     a,b=value
     return f"{a:.{digits}f}–{b:.{digits}f}{unit}" if abs(a-b)>0.049 else f"{a:.{digits}f}{unit}"
 
-def render_html(now, sites=SITES, loader=None):\n    if loader is None:\n        shared=fetch_all_sites()\n        loader=lambda lat,lon:shared[(lat,lon)]
+def render_html(now, sites=SITES, loader=None):
+    if loader is None:
+        shared=fetch_all_sites()
+        loader=lambda lat,lon:shared[(lat,lon)]
     """Compact HTML email with real in-message navigation links (no fake watch buttons)."""
     by_day=defaultdict(list); errors=[]; cache={}
     for site in sites:
