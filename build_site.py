@@ -22,7 +22,7 @@ def build():
                     "m":metrics(cache[key],group),"lat":lat,"lon":lon})
         except Exception as exc:
             errors.append(f"{name}: {type(exc).__name__}: {exc}")
-    if errors:\n        raise RuntimeError('Incomplete weather data: '+ '; '.join(errors))\n    esc=html.escape
+    if errors:\n        raise RuntimeError('Incomplete weather data: '+ '; '.join(errors))\n    from pathlib import Path\n    Path('forecast_cache.json').write_text(json.dumps([{'lat':lat,'lon':lon,'data':data} for (lat,lon),data in cache.items()]),encoding='utf-8')\n    esc=html.escape
     days=sorted(by_day)
     controls="".join(f'<button class="filter" data-day="{day.isoformat()}">{esc(cz_day(day))}</button>' for day in days)
     cards=[]
