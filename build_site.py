@@ -85,67 +85,44 @@ def build():
     footer{{color:#60758a;font-size:12px;line-height:1.6;margin-top:22px;padding:15px 0;border-top:1px solid #d9e3ed}}
     .empty{{background:#fff;padding:20px;border-radius:9px}}
     .choices{{display:flex;gap:8px;padding:0 14px 11px}}
-    .choices button{{font-size:12px;border-radius:7px}}
+    .choices a{{font-size:12px;border:1px solid #b8cbda;padding:8px 12px;border-radius:7px;text-decoration:none}}
     .choices button[aria-pressed="true"]{{background:#204d70;color:white}}
     .risks{{margin:8px 0;padding:9px;background:#fff4e9;border-radius:6px;color:#684a30}}
     .risks.muted{{background:#f0f4f7;color:#526779}}
-    .excluded-day{{display:none}}
+    .window[hidden]{{display:none!important}}
     .muted-note{{font-size:12px;color:#63758a;line-height:1.5;margin:10px 0}}
     </style></head><body><header><div style="font-size:12px;letter-spacing:1px">🪂 PARAGLIDING</div>
     <h1>Letová okna</h1><p>Výhled na 5 dní · aktualizováno {now:%d.%m.%Y v %H:%M} (Praha)</p></header>
     <main><div class="summary"><span><b>{count}</b> podrobných letových oken</span><span><b>{len(days)}</b> dní s okny</span><span><b>{len(SITES)-len(errors)}/{len(SITES)}</b> vyhodnocených sektorů</span></div>
-    <p class="muted-note">Volby Sledovat a Nemůžu se zatím ukládají pouze v tomto prohlížeči. Neovlivní ranní e-mail ani jiné zařízení.</p>
+    <p class="muted-note">Volbu potvrď na GitHubu tlačítkem Submit new issue. Pro obnovení zavři příslušný issue. Změny se projeví při další aktualizaci.</p>
     <nav aria-label="Filtrovat podle dne"><button class="filter active" data-day="all">Všechny dny</button>{controls}</nav>
     <div id="day-actions"></div><p id="hidden-info" class="muted-note"></p>
     <div class="grid">{''.join(cards)}</div>{empty}{errorblock}
+    <p class="muted-note">Obnova skrytých oken: <a href="https://github.com/jmkozel/paragliding-weather/issues">otevřít seznam rozhodnutí</a>.</p>
     <footer><b>Bezpečnost:</b> Kandidátní okno je automatický screening, nikoli doporučení ke startu.
     Vždy ověř aktuální měření, výškový vítr, rotory, fronty a místní podmínky.
     Modelový vítr 10 m/80 m není měření na startovišti. Termika a XC nejsou spolehlivě vyhodnoceny.
-    Web je veřejný a zatím pouze pro čtení. Sledování oken vyžaduje další zabezpečenou službu.</footer></main>
+    Volby se ukládají do veřejných GitHub issues. Sledování zatím neodesílá mimořádná upozornění.</footer></main>
     <script>
     (()=>{{
-      const prefix='pg-windows-v1';
-      const read=()=>{{try{{return JSON.parse(localStorage.getItem(prefix)||'{{}}')}}catch(e){{return {{}}}}}};
-      const state=read();
-      state.days ||= {{}};
-      state.windows ||= {{}};
-      const cards=[...document.querySelectorAll('.window')];
       const filters=[...document.querySelectorAll('.filter')];
+      const cards=[...document.querySelectorAll('.window')];
       let active='all';
-      const save=()=>localStorage.setItem(prefix,JSON.stringify(state));
+      const days={};
+      const sharedDays={json.dumps(prefs["days"])};
       function render(){{
         filters.forEach(b=>b.classList.toggle('active',b.dataset.day===active));
-        let hidden=0;
-        cards.forEach(card=>{{
-          const key=card.dataset.key, day=card.dataset.day;
-          const status=state.windows[key]||'';
-          const excluded=state.days[day]||status==='excluded';
-          if(excluded) hidden++;
-          card.hidden=excluded||(active!=='all'&&active!==day);
-          card.querySelector('.watch').setAttribute('aria-pressed',status==='watch'?'true':'false');
-          card.querySelector('.watch').textContent=status==='watch'?'★ Sledováno':'☆ Sledovat';
-        }});
-        document.getElementById('hidden-info').textContent=hidden?hidden+' skrytých oken (pouze v tomto prohlížeči).':'';
+        cards.forEach(card=>card.hidden=card.dataset.shared==='excluded'||(active!=='all'&&card.dataset.day!==active));
         const area=document.getElementById('day-actions');
-        if(active==='all') area.innerHTML='';
-        else {{
-          const excluded=!!state.days[active];
-          area.innerHTML='<button id="day-toggle" type="button">'+(excluded?'Obnovit celý den':'Nemůžu celý den')+'</button>';
-          document.getElementById('day-toggle').onclick=()=>{{if(excluded)delete state.days[active];else state.days[active]=true;save();render();}};
-        }}
+        if(active==='all'){{area.innerHTML='';return;}}
+        const isExcluded=!!sharedDays[active];
+        const existing=sharedLinks['day:'+active];
+        const title='PG|exclude|'+active+'|*';
+        const url=isExcluded?existing:'https://github.com/jmkozel/paragliding-weather/issues/new?title='+encodeURIComponent(title);
+        area.innerHTML='<a href="'+url+'" target="_blank">'+(isExcluded?'Obnovit celý den · zavřít issue':'Nemůžu celý den')+'</a>';
       }}
+      const sharedLinks={json.dumps(prefs["issue_urls"],ensure_ascii=False)};
       filters.forEach(btn=>btn.addEventListener('click',()=>{{active=btn.dataset.day;render();}}));
-      cards.forEach(card=>{{
-        const key=card.dataset.key;
-        card.querySelector('.watch').addEventListener('click',()=>{{
-          if(state.windows[key]==='watch')delete state.windows[key];
-          else state.windows[key]='watch';
-          save();render();
-        }});
-        card.querySelector('.exclude').addEventListener('click',()=>{{
-          state.windows[key]='excluded';save();render();
-        }});
-      }});
       render();
     }})();
     </script></body></html>"""
