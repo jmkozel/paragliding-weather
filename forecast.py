@@ -73,6 +73,96 @@ def fetch_all_sites():
         raise ValueError("Incomplete Open-Meteo multi-location response")
     return dict(zip(locations,results))
 
+MODELS = {
+    "ICON-D2": "icon_d2",
+    "ICON-EU": "icon_eu",
+    "ECMWF": "ecmwf_ifs025",
+    "GFS": "gfs_seamless",
+}
+# Separate model calls make the response schema explicit. Fail closed on errors.
+MODEL_HOURLY = ["wind_speed_10m", "wind_direction_10m", "wind_gusts_10m"]
+
+def fetch_model_comparison():
+    locations=list(dict.fromkeys((s[1],s[2]) for s in SITES))
+    output={}
+    for label,model in MODELS.items():
+        args={
+            "latitude":",".join(str(p[0]) for p in locations),
+            "longitude":",".join(str(p[1]) for p in locations),
+            "timezone":"Europe/Prague",
+            "forecast_days":5,
+            "wind_speed_unit":"ms",
+            "hourly":",".join(MODEL_HOURLY),
+            "models":model,
+        }
+        url="https://api.open-meteo.com/v1/forecast?"+urllib.parse.urlencode(args)
+        req=urllib.request.Request(url,headers={"User-Agent":"paragliding-weather/1.1"})
+        with urllib.request.urlopen(req,timeout=60) as response:
+            payload=json.load(response)
+        results=payload if isinstance(payload,list) else [payload]
+        if len(results)!=len(locations):
+            raise ValueError(f"{label}: unexpected location count")
+        for location,data in zip(locations,results):
+            h=data.get("hourly",{})
+            if not all(h.get(k) and len(h[k])==len(h.get("time",[])) for k in MODEL_HOURLY):
+                raise ValueError(f"{label}: incomplete hourly wind data")
+            output.setdefault(location,{})[label]=h
+    return output
+
+def model_consensus(site, models, time):
+    """Conservative consensus: at least 3/4 pass; no severe outlier.
+    Returns status and per-model values. Missing data never counts as agreement.
+    """
+    _,_,_,minimum,maximum,gust_limit,ranges=site
+    rows=[]
+    for label,h in models.items():
+        try:
+            i=h["time"].index(time)
+            w=h["wind_speed_10m"][i]
+            d=h["wind_direction_10m"][i]
+            g=h["wind_gusts_10m"][i]
+            if None in (w,d,g): raise ValueError("missing")
+            passed=minimum<=w<=maximum and g<=gust_limit and direction_ok(d,ranges)
+            severe=w>maximum+2 or g>gust_limit+3
+            rows.append({"model":label,"wind":w,"direction":d,"gust":g,
+                         "pass":passed,"severe":severe})
+        except (ValueError,IndexError,KeyError,TypeError):
+            rows.append({"model":label,"wind":None,"direction":None,
+                         "gust":None,"pass":False,"severe":True})
+    good=sum(row["pass"] for row in rows)
+    severe=any(row["severe"] for row in rows)
+    status="good" if good>=3 and not severe else ("uncertain" if good>=2 and not severe else "bad")
+    return status,rows
+
+def consensus_windows(site,data,models,now):
+    """Only good consensus hours form published windows."""
+    h=data["hourly"]
+    solar=solar_intervals(data)
+    slots=[]
+    details={}
+    for i,t in enumerate(h["time"]):
+        start=datetime.fromisoformat(t)
+        day=start.date().isoformat()
+        if day not in solar: continue
+        sunrise,sunset=solar[day]
+        begin=max(start,sunrise,now.replace(tzinfo=None))
+        end=min(start+timedelta(hours=1),sunset)
+        status,rows=model_consensus(site,models,t)
+        details[i]=(status,rows)
+        good,_=screening(site,h,i)
+        if good and status=="good" and end>begin:
+            slots.append((begin,end,i))
+    groups=[]
+    current=[]
+    for slot in slots:
+        if current and slot[0]>current[-1][1]:
+            groups.append(current)
+            current=[]
+        current.append(slot)
+    if current:groups.append(current)
+    groups=[g for g in groups if (g[-1][1]-g[0][0]).total_seconds()>=3600]
+    return groups,details
+
 def direction_ok(direction, ranges):
     return any(lo <= direction <= hi for lo,hi in ranges)
 
