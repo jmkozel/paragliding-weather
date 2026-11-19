@@ -45,11 +45,6 @@ def build():
             window_key=f'{day.isoformat()}|{item["name"]}'
             is_excluded=excluded(prefs,day.isoformat(),item["name"])
             is_watched=prefs["windows"].get(window_key)=="watch"
-            def issue_link(action,site):
-                title=f"PG|{action}|{day.isoformat()}|{site}"
-                return "https://github.com/jmkozel/paragliding-weather/issues/new?title="+quote(title,safe="")
-            watch_url=prefs["issue_urls"].get(window_key) if is_watched else issue_link("watch",item["name"])
-            exclude_url=prefs["issue_urls"].get(window_key) if is_excluded and not prefs["days"].get(day.isoformat()) else issue_link("exclude",item["name"])
             notes=item["notes"]
             model_table="<div class='risks muted'><b>Modely: vítr / max. náraz (m/s)</b><br>"+ "<br>".join(f"{esc(row['model'])}: {row['wind']:.1f} / {row['gust']:.1f}" for row in item["models"])+"</div>"
             risk_html=("<div class='risks'><b>Na co dát pozor:</b> "+ "; ".join(esc(x) for x in notes)+"</div>") if notes else "<div class='risks muted'>Bez dodatečných varovných signálů v těchto dílčích ukazatelích. Nejde o potvrzení bezpečnosti.</div>"
@@ -58,7 +53,7 @@ def build():
               <strong class="time">{item["start"]}–{item["end"]}</strong></div>
               <div class="numbers"><div><small>Vítr · odkud {metric("wind_direction_10m","°",0)}</small><b>{metric("wind_speed_10m"," m/s")}</b></div>
               <div><small>Nárazy</small><b>{metric("wind_gusts_10m"," m/s")}</b></div></div>
-              <div class="choices"><a href="{watch_url}" target="_blank">{'★ Sledováno · spravovat' if is_watched else '☆ Sledovat'}</a><a href="{exclude_url}" target="_blank">{'Obnovit · zavřít záznam' if is_excluded else 'Nemůžu'}</a></div>
+              <div class="choices"><button type="button" class="watch">☆ Sledovat</button><button type="button" class="exclude">Nemůžu</button></div>
               <details><summary>Podrobnosti a kontrola před letem</summary>
               <div class="detail">Vítr 80 m: <b>{metric("wind_speed_80m"," m/s")}</b><br>
               Oblačnost: <b>{metric("cloud_cover"," %",0)}</b> · nízká: {metric("cloud_cover_low"," %",0)}<br>
@@ -91,7 +86,7 @@ def build():
     footer{{color:#60758a;font-size:12px;line-height:1.6;margin-top:22px;padding:15px 0;border-top:1px solid #d9e3ed}}
     .empty{{background:#fff;padding:20px;border-radius:9px}}
     .choices{{display:flex;gap:8px;padding:0 14px 11px}}
-    .choices a{{font-size:12px;border:1px solid #b8cbda;padding:8px 12px;border-radius:7px;text-decoration:none}}
+    .choices button{{font-size:12px;border:1px solid #b8cbda;padding:8px 12px;border-radius:7px}}
     .choices button[aria-pressed="true"]{{background:#204d70;color:white}}
     .risks{{margin:8px 0;padding:9px;background:#fff4e9;border-radius:6px;color:#684a30}}
     .risks.muted{{background:#f0f4f7;color:#526779}}
@@ -101,15 +96,15 @@ def build():
     <h1>Letová okna</h1><p>Výhled na 5 dní · aktualizováno {now:%d.%m.%Y v %H:%M} (Praha)</p></header>
     <main><div class="summary"><span><b>{count}</b> podrobných letových oken</span><span><b>{len(days)}</b> dní s okny</span><span><b>{len(SITES)-len(errors)}/{len(SITES)}</b> vyhodnocených sektorů</span></div>
     <p class="muted-note">V hlavním přehledu jsou pouze okna, kde alespoň 3 ze 4 modelů splňují místní limity a žádný neukazuje výrazný exces. Navíc platí základní meteorologické filtry. Modely nejsou nezávislé a jejich shoda nezaručuje bezpečný let.</p>
-    <p class="muted-note">Volbu potvrď na GitHubu tlačítkem Submit new issue. Pro obnovení zavři příslušný issue. Změny se projeví při další aktualizaci.</p>
+    <p class="muted-note">Rozhodnutí ukládáš jedním kliknutím. Skryté možnosti lze obnovit níže.</p>
     <nav aria-label="Filtrovat podle dne"><button class="filter active" data-day="all">Všechny dny</button>{controls}</nav>
     <div id="day-actions"></div><p id="hidden-info" class="muted-note"></p>
     <div class="grid">{''.join(cards)}</div>{empty}{errorblock}
-    <p class="muted-note">Obnova skrytých oken: <a href="https://github.com/jmkozel/paragliding-weather/issues">otevřít seznam rozhodnutí</a>.</p>
+    <details><summary>Spravovat skryté dny a okna</summary><div id="restore-list"></div></details>
     <footer><b>Bezpečnost:</b> Kandidátní okno je automatický screening, nikoli doporučení ke startu.
     Vždy ověř aktuální měření, výškový vítr, rotory, fronty a místní podmínky.
     Modelový vítr 10 m/80 m není měření na startovišti. Termika a XC nejsou spolehlivě vyhodnoceny.
-    Volby se ukládají do veřejných GitHub issues. Sledování zatím neodesílá mimořádná upozornění.</footer></main>
+    Volby se ukládají přes Cloudflare KV. Sledování zatím neodesílá mimořádná upozornění.</footer></main>
     <script>
     (()=>{{
       const filters=[...document.querySelectorAll('.filter')];
