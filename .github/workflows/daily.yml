@@ -4,8 +4,6 @@ on:
     # Refresh website every three hours, plus 07:00 local daily.
     - cron: '17 */3 * * *'
     - cron: '0 5,6 * * *'
-  issues:
-    types: [opened, closed, reopened]
   workflow_dispatch:
 permissions:
   contents: read
@@ -26,7 +24,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Check Python syntax
-        run: python -m py_compile forecast.py build_site.py
+        run: python -m py_compile forecast.py build_site.py preferences.py
       - name: Build public weather report
         env:
           GITHUB_TOKEN: ${{ github.token }}
