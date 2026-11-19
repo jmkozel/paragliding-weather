@@ -107,24 +107,88 @@ def build():
     Volby se ukládají přes Cloudflare KV. Sledování zatím neodesílá mimořádná upozornění.</footer></main>
     <script>
     (()=>{{
-      const filters=[...document.querySelectorAll('.filter')];
+      const API='https://paragliding-control.jmkozel.workers.dev/preferences';
       const cards=[...document.querySelectorAll('.window')];
-      let active='all';
-      const sharedDays={json.dumps(prefs["days"])};
+      const filters=[...document.querySelectorAll('.filter')];
+      const info=document.getElementById('hidden-info');
+      let active='all',busy=false;
+      let days={json.dumps(prefs["days"],ensure_ascii=False)};
+      let windows={json.dumps(prefs["windows"],ensure_ascii=False)};
       function render(){{
         filters.forEach(b=>b.classList.toggle('active',b.dataset.day===active));
-        cards.forEach(card=>card.hidden=card.dataset.shared==='excluded'||(active!=='all'&&card.dataset.day!==active));
+        cards.forEach(card=>{{
+          const k=card.dataset.key;
+          card.hidden=!!days[card.dataset.day]||windows[k]==='exclude'||(active!=='all'&&card.dataset.day!==active);
+          const watch=card.querySelector('.watch');
+          watch.textContent=windows[k]==='watch'?'★ Sledováno · zrušit':'☆ Sledovat';
+          watch.setAttribute('aria-pressed',String(windows[k]==='watch'));
+        }});
         const area=document.getElementById('day-actions');
-        if(active==='all'){{area.innerHTML='';return;}}
-        const isExcluded=!!sharedDays[active];
-        const existing=sharedLinks['day:'+active];
-        const title='PG|exclude|'+active+'|*';
-        const url=isExcluded?existing:'https://github.com/jmkozel/paragliding-weather/issues/new?title='+encodeURIComponent(title);
-        area.innerHTML='<a href="'+url+'" target="_blank">'+(isExcluded?'Obnovit celý den · zavřít issue':'Nemůžu celý den')+'</a>';
+        area.replaceChildren();
+        if(active!=='all'){{
+          const button=document.createElement('button');
+          button.textContent=days[active]?'Obnovit celý den':'Nemůžu celý den';
+          button.onclick=()=>change(active,'*',days[active]?'clear':'exclude');
+          area.appendChild(button);
+        }}
+        const restore=document.getElementById('restore-list');
+        restore.replaceChildren();
+        for(const [day,value] of Object.entries(days)){{
+          if(!value)continue;
+          const button=document.createElement('button');
+          button.textContent='Obnovit celý den: '+day;
+          button.onclick=()=>change(day,'*','clear');
+          restore.appendChild(button);
+        }}
+        for(const [k,value] of Object.entries(windows)){{
+          if(value!=='exclude')continue;
+          const pos=k.indexOf('|');
+          if(pos<0)continue;
+          const button=document.createElement('button');
+          button.textContent='Obnovit '+k.slice(pos+1)+' ('+k.slice(0,pos)+')';
+          button.onclick=()=>change(k.slice(0,pos),k.slice(pos+1),'clear');
+          restore.appendChild(button);
+        }}
+        info.textContent=cards.filter(card=>days[card.dataset.day]||windows[card.dataset.key]==='exclude').length+' skrytých oken';
       }}
-      const sharedLinks={json.dumps(prefs["issue_urls"],ensure_ascii=False)};
-      filters.forEach(btn=>btn.addEventListener('click',()=>{{active=btn.dataset.day;render();}}));
-      render();
+      async function change(day,site,action){{
+        if(busy)return;
+        busy=true;
+        info.textContent='Ukládám…';
+        try{{
+          const response=await fetch(API,{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{day,site,action}})}});
+          if(!response.ok)throw Error('HTTP '+response.status);
+          if(site==='*'){{if(action==='clear')delete days[day];else days[day]=true;}}
+          else{{const k=day+'|'+site;if(action==='clear')delete windows[k];else windows[k]=action;}}
+          render();
+        }}catch(e){{info.textContent='Uložení selhalo: '+e.message;}}
+        finally{{busy=false;}}
+      }}
+      cards.forEach(card=>{{
+        const pos=card.dataset.key.indexOf('|');
+        const day=card.dataset.key.slice(0,pos),site=card.dataset.key.slice(pos+1);
+        card.querySelector('.watch').onclick=()=>change(day,site,windows[card.dataset.key]==='watch'?'clear':'watch');
+        card.querySelector('.exclude').onclick=()=>change(day,site,'exclude');
+      }});
+      filters.forEach(b=>b.onclick=()=>{{active=b.dataset.day;render();}});
+      async function sync(){{
+        try{{
+          const response=await fetch(API,{{cache:'no-store'}});
+          if(!response.ok)throw Error('HTTP '+response.status);
+          const data=await response.json();
+          if(!data.complete)throw Error('Neúplná data');
+          days={{}};windows={{}};
+          for(const item of data.preferences){{
+            const pos=item.key.indexOf('|');
+            if(pos<0)continue;
+            const day=item.key.slice(0,pos),site=item.key.slice(pos+1);
+            if(site==='*'&&item.value==='exclude')days[day]=true;
+            else if(site!=='*'&&['watch','exclude'].includes(item.value))windows[item.key]=item.value;
+          }}
+          render();
+        }}catch(e){{info.textContent='Nepodařilo se načíst rozhodnutí: '+e.message;}}
+      }}
+      render();sync();
     }})();
     </script></body></html>"""
     out=Path("public");out.mkdir(exist_ok=True)
