@@ -91,6 +91,11 @@ def build():
                                'direction':data['wind_direction_10m'][i],
                                'upper':data['wind_speed_80m'][i],
                                'cloud':data['cloud_cover'][i],
+                               'low_cloud':data['cloud_cover_low'][i],
+                               'cape':data['cape'][i],
+                               'visibility':data['visibility'][i],
+                               'wind80_direction':data['wind_direction_80m'][i],
+                               'precipitation':data['precipitation'][i],
                                'rain':data['precipitation_probability'][i],
                                'screening':reason if not valid else 'Základní filtry splněny',
                                'consensus':status,
@@ -141,6 +146,29 @@ def build():
     .choices button[aria-pressed="true"]{{background:#204d70;color:white}}
     .risks{{margin:8px 0;padding:9px;background:#fff4e9;border-radius:6px;color:#684a30}}
     .risks.muted{{background:#f0f4f7;color:#526779}}
+    .tracked-report{{background:#fff;border:1px solid #d9e4ee;border-radius:13px;overflow:hidden;margin:12px 0 20px;box-shadow:0 2px 6px #dce5ee66}}
+    .report-top{{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:19px 20px 14px}}
+    .eyebrow{{font-size:10px;font-weight:700;letter-spacing:.9px;color:#6c8397}}
+    .report-time{{font-size:28px;font-weight:750;margin:5px 0 9px}}
+    .flight-type{{display:inline-block;padding:5px 9px;border-radius:6px;background:#e7f1ec;color:#21634b;font-size:12px;font-weight:700}}
+    .report-note{{max-width:520px;color:#687d8e;font-size:12px;line-height:1.5;margin:9px 0 0}}
+    .depart-box{{background:#e9f1f7;border-radius:9px;padding:12px 16px;text-align:center;min-width:145px}}
+    .depart-box small{{display:block;color:#60798e;font-size:10px;font-weight:700;letter-spacing:.4px}}
+    .depart-box strong{{display:block;color:#1c537b;font-size:28px;margin-top:4px}}
+    .route-line{{margin:0 20px 16px;padding:10px 12px;background:#f3f7fa;border-radius:7px;color:#506c80;font-size:12px;line-height:1.6}}
+    .report-metrics{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid #e6edf2;border-bottom:1px solid #e6edf2}}
+    .metric-cell{{padding:14px 16px;border-right:1px solid #e6edf2;border-bottom:1px solid #e6edf2}}
+    .metric-cell small{{display:block;font-size:11px;color:#688095;margin-bottom:6px}}
+    .metric-cell strong{{font-size:16px;white-space:nowrap}}
+    .report-foot{{padding:10px 20px 15px;font-size:13px;line-height:1.55}}
+    .report-foot p{{margin:9px 0}}
+    .compact-models{{padding:9px 0;border:0}}
+    .compact-models p{{margin:5px 0}}
+    .hour-table td.reason{{text-align:left;white-space:nowrap;font-size:12px}}
+    .hour-table .hour-ok{{color:#26714b}}
+    .hour-table .hour-no{{color:#a04e30}}
+    .hour-table tr.in-window{{background:#f0f7f3}}
+    @media(max-width:650px){{.report-top{{flex-direction:column}}.depart-box{{width:100%;text-align:left}}.report-metrics{{grid-template-columns:repeat(2,minmax(0,1fr))}}.metric-cell strong{{font-size:15px}}}}
     .tracked-heading{{font-size:22px;margin:12px 0 6px}}
     .tracked-sub{{font-size:13px;color:#64788b;margin:0 0 16px}}
     .tracked-status{{background:#fff;border-left:4px solid #cb9340;border-radius:8px;padding:13px 15px;margin:14px 0;line-height:1.5}}
@@ -198,13 +226,35 @@ def build():
         const d=trackedData.find(x=>x.key===selected),heading=document.createElement("h2");const [dateLabel,siteLabel]=selected.split("|");heading.className="tracked-heading";heading.textContent=siteLabel+" · "+dateLabel.slice(8)+"."+dateLabel.slice(5,7)+".";panel.appendChild(heading);
         const stop=document.createElement("button");stop.textContent="Přestat sledovat";stop.style.marginBottom="12px";stop.onclick=()=>{{const [day,...parts]=selected.split("|");selected="overview";change(day,parts.join("|"),"clear");}};panel.appendChild(stop);
         if(!d||!d.items.length){{const p=document.createElement("p");p.textContent=d?"Aktuálně bez vhodného kandidátního okna. Sledování pokračuje. Níže jsou předpovídané hodnoty a důvody vyřazení.":"Pro tento den zatím nejsou k dispozici data z poslední aktualizace. Sledování zůstává aktivní.";panel.appendChild(p);}}
-        else for(const w of d.items){{const box=document.createElement("article");box.className="window";box.style.padding="15px";const h=document.createElement("h3");h.textContent=w.start+"–"+w.end;box.appendChild(h);
-          for(const [k,label,unit] of [["wind_speed_10m","Vítr"," m/s"],["wind_gusts_10m","Nárazy"," m/s"],["wind_direction_10m","Směr","°"],["wind_speed_80m","Vítr 80 m"," m/s"],["cloud_cover","Oblačnost"," %"],["precipitation_probability","Srážky"," %"]]){{const p=document.createElement("p");const a=w.m[k];p.textContent=label+": "+(a?a.map(x=>Number(x).toFixed(1)).join("–")+unit:"bez dat");box.appendChild(p);}}
-          const trend=document.createElement("p");trend.textContent="Vývoj od posledního e-mailu: "+(w.trend?.join("; ")||"bez změny");box.appendChild(trend);
-          const log=w.logistics,route=document.createElement("div");route.className="risks muted";route.textContent="Odjezd z Černošic "+log.departure+" · "+log.drive_min+" min autem · příjezd "+log.arrival+" · "+log.prepare_min+" min přesun a příprava · připraven ke startu "+w.start;box.appendChild(route);
-          const p=document.createElement("p");p.textContent="Rizika: "+(w.notes.join("; ")||"bez dodatečných signálů");box.appendChild(p);
-          const m=document.createElement("p");m.textContent="Modely: "+w.models.map(x=>x.model+" "+x.wind.toFixed(1)+"/"+x.gust.toFixed(1)+" m/s").join(" · ");box.appendChild(m);panel.appendChild(box);}}
-        if(d?.baseline){{const b=document.createElement("p");b.className="risks muted";b.textContent=d.baseline.exists?"Poslední odeslaný report: okno "+d.baseline.start+"–"+d.baseline.end+", plánovaný odjezd "+d.baseline.logistics.departure:"Poslední odeslaný report: bez kandidátního okna";panel.appendChild(b);}}
+        else for(const w of d.items){{
+          const box=document.createElement("article");box.className="tracked-report";
+          const fmt=(v,unit="")=>v==null?"–":Number(v).toFixed(1)+unit;
+          const range=(key,unit="")=>{{const v=w.m[key];return Array.isArray(v)?v.map(n=>fmt(n)).join("–")+unit:"–";}};
+          const top=document.createElement("div");top.className="report-top";
+          const left=document.createElement("div");left.innerHTML="<span class='eyebrow'>PŘEDPOVÍDANÉ LETOVÉ OKNO</span>";
+          const time=document.createElement("div");time.className="report-time";time.textContent=w.start+"–"+w.end;left.appendChild(time);
+          const type=document.createElement("span");type.className="flight-type";type.textContent="Svahové létání · podmíněně";left.appendChild(type);
+          const typeNote=document.createElement("p");typeNote.className="report-note";typeNote.textContent="Směr a síla větru odpovídají filtrům pro daný svah. Termické a přeletové (XC) podmínky nejsou z těchto dat spolehlivě určitelné.";left.appendChild(typeNote);top.appendChild(left);
+          const depart=document.createElement("div");depart.className="depart-box";
+          const cap=document.createElement("small");cap.textContent="ODJEZD Z ČERNOŠIC";depart.appendChild(cap);
+          const big=document.createElement("strong");big.textContent=w.logistics.departure;depart.appendChild(big);top.appendChild(depart);box.appendChild(top);
+          const route=document.createElement("div");route.className="route-line";
+          route.textContent=w.logistics.drive_min+" min autem → příjezd "+w.logistics.arrival+" → "+w.logistics.prepare_min+" min přesun a příprava → start "+w.start;box.appendChild(route);
+          const metrics=document.createElement("div");metrics.className="report-metrics";
+          for(const [label,key,unit] of [["Vítr 10 m","wind_speed_10m"," m/s"],["Nárazy","wind_gusts_10m"," m/s"],["Směr větru","wind_direction_10m","°"],["Vítr 80 m","wind_speed_80m"," m/s"],["Oblačnost","cloud_cover"," %"],["Nízká oblačnost","cloud_cover_low"," %"],["Pravd. srážek","precipitation_probability"," %"]]){{
+            const cell=document.createElement("div");cell.className="metric-cell";
+            const labelEl=document.createElement("small");labelEl.textContent=label;cell.appendChild(labelEl);
+            const value=document.createElement("strong");value.textContent=range(key,unit);cell.appendChild(value);metrics.appendChild(cell);
+          }}
+          box.appendChild(metrics);
+          const foot=document.createElement("div");foot.className="report-foot";
+          const risk=document.createElement("p");risk.innerHTML="<b>Rizika:</b> ";risk.appendChild(document.createTextNode(w.notes.join("; ")||"Bez dalších varovných signálů v hodnocených ukazatelích"));foot.appendChild(risk);
+          const trend=document.createElement("p");trend.innerHTML="<b>Vývoj od posledního e-mailu:</b> ";trend.appendChild(document.createTextNode(w.trend?.join("; ")||"Bez změny"));foot.appendChild(trend);
+          const model=document.createElement("details");model.className="compact-models";const summary=document.createElement("summary");summary.textContent="Porovnání čtyř modelů";model.appendChild(summary);
+          for(const m of w.models){{const line=document.createElement("p");line.textContent=m.model+": vítr "+fmt(m.wind)+" m/s, náraz "+fmt(m.gust)+" m/s";model.appendChild(line);}}foot.appendChild(model);
+          box.appendChild(foot);panel.appendChild(box);
+        }}
+        if(d?.baseline){{const b=document.createElement("p");b.className="hour-legend";b.textContent=d.baseline.exists?"Poslední odeslaný report: okno "+d.baseline.start+"–"+d.baseline.end+", odjezd "+d.baseline.logistics.departure:"Poslední odeslaný report: bez kandidátního okna";panel.appendChild(b);}}
         if(d?.hourly?.length){{
           const fmt=(v,unit="")=>v==null?"–":Number(v).toFixed(1)+unit;
           const daylight=d.hourly.filter(x=>Number(x.time.slice(0,2))>=7&&Number(x.time.slice(0,2))<=17);
