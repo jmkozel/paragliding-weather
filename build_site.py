@@ -123,6 +123,28 @@ def build():
     .choices button[aria-pressed="true"]{{background:#204d70;color:white}}
     .risks{{margin:8px 0;padding:9px;background:#fff4e9;border-radius:6px;color:#684a30}}
     .risks.muted{{background:#f0f4f7;color:#526779}}
+    .tracked-heading{{font-size:22px;margin:12px 0 6px}}
+    .tracked-sub{{font-size:13px;color:#64788b;margin:0 0 16px}}
+    .tracked-status{{background:#fff;border-left:4px solid #cb9340;border-radius:8px;padding:13px 15px;margin:14px 0;line-height:1.5}}
+    .tracked-summary{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:12px 0}}
+    .tracked-summary div{{background:white;border-radius:9px;padding:12px}}
+    .tracked-summary small{{display:block;color:#65798b;font-size:12px}}
+    .tracked-summary b{{font-size:19px}}
+    .hour-table-wrap{{overflow-x:auto;background:white;border-radius:10px;border:1px solid #dce5ec}}
+    .hour-table{{border-collapse:collapse;width:100%;font-size:13px;white-space:nowrap}}
+    .hour-table th,.hour-table td{{padding:10px 9px;text-align:right;border-bottom:1px solid #e5edf3}}
+    .hour-table th:first-child,.hour-table td:first-child{{text-align:left;position:sticky;left:0;background:white}}
+    .hour-table th{{background:#eaf1f6;color:#536b7e;font-size:12px}}
+    .hour-table tr:last-child td{{border-bottom:0}}
+    .hour-table .hour-bad{{color:#9b542f}}
+    .hour-table .hour-good{{color:#26714b}}
+    .hour-detail{{margin:12px 0;background:white;border:1px solid #dae4ed;border-radius:10px;overflow:hidden}}
+    .hour-detail summary{{padding:13px 14px;font-size:14px;list-style:auto}}
+    .hour-detail .inner{{padding:0 14px 13px}}
+    .model-row{{display:grid;grid-template-columns:1fr auto auto;gap:10px;padding:8px 0;border-bottom:1px solid #e5edf3;font-size:13px}}
+    .model-row:last-child{{border-bottom:0}}
+    .hour-legend{{font-size:12px;color:#61758a;margin:9px 0 16px;line-height:1.5}}
+    @media(max-width:500px){{.hour-table th,.hour-table td{{padding:10px 7px}}}}
     .window[hidden]{{display:none!important}}
     .muted-note{{font-size:12px;color:#63758a;line-height:1.5;margin:10px 0}}
     </style></head><body><header><div style="font-size:12px;letter-spacing:1px">🪂 PARAGLIDING</div>
@@ -158,7 +180,7 @@ def build():
         if(selected!=="overview"&&!entries.some(([k])=>k===selected))selected="overview";
         const show=selected!=="overview";document.getElementById("overview").hidden=show;panel.hidden=!show;
         if(!show)return;
-        const d=trackedData.find(x=>x.key===selected),heading=document.createElement("h2");heading.textContent=selected.replace("|"," · ");panel.appendChild(heading);
+        const d=trackedData.find(x=>x.key===selected),heading=document.createElement("h2");const [dateLabel,siteLabel]=selected.split("|");heading.className="tracked-heading";heading.textContent=siteLabel+" · "+dateLabel.slice(8)+"."+dateLabel.slice(5,7)+".";panel.appendChild(heading);
         if(!d||!d.items.length){{const p=document.createElement("p");p.textContent="Aktuálně bez vhodného kandidátního okna. Sledování pokračuje. Níže jsou skutečné předpovídané hodnoty i důvody, proč hodiny neprošly filtry.";panel.appendChild(p);}}
         else for(const w of d.items){{const box=document.createElement("article");box.className="window";box.style.padding="15px";const h=document.createElement("h3");h.textContent=w.start+"–"+w.end;box.appendChild(h);
           for(const [k,label,unit] of [["wind_speed_10m","Vítr"," m/s"],["wind_gusts_10m","Nárazy"," m/s"],["wind_direction_10m","Směr","°"],["wind_speed_80m","Vítr 80 m"," m/s"],["cloud_cover","Oblačnost"," %"],["precipitation_probability","Srážky"," %"]]){{const p=document.createElement("p");const a=w.m[k];p.textContent=label+": "+(a?a.map(x=>Number(x).toFixed(1)).join("–")+unit:"bez dat");box.appendChild(p);}}
@@ -167,11 +189,37 @@ def build():
           const p=document.createElement("p");p.textContent="Rizika: "+(w.notes.join("; ")||"bez dodatečných signálů");box.appendChild(p);
           const m=document.createElement("p");m.textContent="Modely: "+w.models.map(x=>x.model+" "+x.wind.toFixed(1)+"/"+x.gust.toFixed(1)+" m/s").join(" · ");box.appendChild(m);panel.appendChild(box);}}
         if(d?.baseline){{const b=document.createElement("p");b.className="risks muted";b.textContent=d.baseline.exists?"Poslední odeslaný report: okno "+d.baseline.start+"–"+d.baseline.end+", plánovaný odjezd "+d.baseline.logistics.departure:"Poslední odeslaný report: bez kandidátního okna";panel.appendChild(b);}}
-        if(d?.hourly?.length){{const h=document.createElement("h3");h.textContent="Hodinová předpověď a důvody vyřazení";panel.appendChild(h);
-          for(const hour of d.hourly){{const p=document.createElement("div");p.className="risks muted";p.style.lineHeight="1.6";
-            const fmt=v=>v==null?"bez dat":Number(v).toFixed(1);
-            p.textContent=hour.time+" · vítr "+fmt(hour.wind)+" m/s · nárazy "+fmt(hour.gust)+" m/s · směr "+fmt(hour.direction)+"° · 80 m "+fmt(hour.upper)+" m/s · oblačnost "+fmt(hour.cloud)+" % · srážky "+fmt(hour.rain)+" % · "+hour.screening+" · modely: "+(hour.consensus==="good"?"shoda":hour.consensus==="uncertain"?"nejistá shoda":"bez dostatečné shody")+" · "+hour.models.map(m=>m.model+" "+fmt(m.wind)+"/"+fmt(m.gust)+" m/s "+(m.pass?"✓":"×")).join(", ");
-            panel.appendChild(p);}}
+        if(d?.hourly?.length){{
+          const fmt=(v,unit="")=>v==null?"–":Number(v).toFixed(1)+unit;
+          const daylight=d.hourly.filter(x=>Number(x.time.slice(0,2))>=7&&Number(x.time.slice(0,2))<=17);
+          const hours=daylight.length?daylight:d.hourly;
+          const heading=document.createElement("h3");heading.textContent="Předpověď po hodinách";panel.appendChild(heading);
+          const legend=document.createElement("p");legend.className="hour-legend";legend.textContent="Denní hodiny · vodorovným posunutím tabulky zobrazíš další údaje. Klepnutím na hodinu otevřeš podrobnosti a jednotlivé modely.";panel.appendChild(legend);
+          const wrap=document.createElement("div");wrap.className="hour-table-wrap";
+          const table=document.createElement("table");table.className="hour-table";
+          const head=document.createElement("thead"),tr=document.createElement("tr");
+          for(const label of ["Čas","Vítr","Nárazy","Směr","80 m","Oblač.","Srážky","Shoda"]){{const th=document.createElement("th");th.textContent=label;tr.appendChild(th);}}
+          head.appendChild(tr);table.appendChild(head);
+          const body=document.createElement("tbody");
+          for(const hour of hours){{
+            const row=document.createElement("tr");
+            const vals=[hour.time,fmt(hour.wind),fmt(hour.gust),fmt(hour.direction,"°"),fmt(hour.upper),fmt(hour.cloud,"%"),fmt(hour.rain,"%"),hour.consensus==="good"?"3–4 ✓":hour.consensus==="uncertain"?"Nejistá":"Ne"];
+            vals.forEach((v,i)=>{{const cell=document.createElement("td");cell.textContent=v;if(i===7)cell.className=hour.consensus==="good"?"hour-good":"hour-bad";row.appendChild(cell);}});
+            body.appendChild(row);
+          }}
+          table.appendChild(body);wrap.appendChild(table);panel.appendChild(wrap);
+          const units=document.createElement("p");units.className="hour-legend";units.textContent="Vítr, nárazy a 80 m v m/s · směr odkud ve stupních · oblačnost a pravděpodobnost srážek v %. Shoda označuje souhlas modelů, ne bezpečnost letu.";panel.appendChild(units);
+          const detailTitle=document.createElement("h3");detailTitle.textContent="Proč jednotlivé hodiny nevyhovují";panel.appendChild(detailTitle);
+          for(const hour of hours){{
+            const detail=document.createElement("details");detail.className="hour-detail";
+            const summary=document.createElement("summary");summary.textContent=hour.time+" · "+(hour.screening==="Základní filtry splněny"?(hour.consensus==="good"?"Splněné filtry":"Nedostatečná shoda modelů"):hour.screening);detail.appendChild(summary);
+            const inner=document.createElement("div");inner.className="inner";
+            const caption=document.createElement("p");caption.className="hour-legend";caption.textContent="Model · vítr / nárazy (m/s) · splňuje limity";inner.appendChild(caption);
+            for(const m of hour.models){{const r=document.createElement("div");r.className="model-row";
+              for(const value of [m.model,fmt(m.wind)+" / "+fmt(m.gust),m.pass?"✓ Ano":"× Ne"]){{const cell=document.createElement("span");cell.textContent=value;r.appendChild(cell);}}
+              inner.appendChild(r);}}
+            detail.appendChild(inner);panel.appendChild(detail);
+          }}
         }}
         const stop=document.createElement("button");stop.textContent="Přestat sledovat";stop.onclick=()=>{{const [day,site]=selected.split("|");selected="overview";change(day,site,"clear");}};panel.appendChild(stop);
       }}
