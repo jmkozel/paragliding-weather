@@ -454,8 +454,7 @@ def main():
     sender=os.getenv("SMTP_USER")
     password=os.getenv("SMTP_APP_PASSWORD")
     if not sender or not password:
-        print("Email NOT sent: configure SMTP_USER and SMTP_APP_PASSWORD secrets.")
-        return
+        raise RuntimeError("Email NOT sent: configure SMTP_USER and SMTP_APP_PASSWORD secrets.")
     msg=EmailMessage()
     msg["From"]=sender
     msg["To"]=os.getenv("REPORT_TO","jmkozel@gmail.com")
