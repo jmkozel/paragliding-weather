@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from preferences import load, excluded
+from logistics import departure
 from urllib.parse import quote
 from forecast import SITES, fetch_all_sites, fetch_model_comparison, consensus_windows, metrics, risk_notes, cz_day, display_range
 
@@ -27,7 +28,8 @@ def build():
                     "models":[{"model":name,"wind":min(r["wind"] for r in [consensus[i][1][j] for i in [part[2] for part in group]]),
                                "gust":max(r["gust"] for r in [consensus[i][1][j] for i in [part[2] for part in group]])}
                               for j,name in enumerate(comparison[key])],
-                    "lat":lat,"lon":lon})
+                    "lat":lat,"lon":lon,
+                    "logistics":departure(name,group[0][0].date().isoformat(),group[0][0].strftime("%H:%M"))})
         except Exception as exc:
             errors.append(f"{name}: {type(exc).__name__}: {exc}")
     if errors:
@@ -134,6 +136,7 @@ def build():
         if(!d||!d.items.length){{const p=document.createElement("p");p.textContent="Aktuálně bez kandidátního okna. Předpověď se mohla změnit.";panel.appendChild(p);}}
         else for(const w of d.items){{const box=document.createElement("article");box.className="window";box.style.padding="15px";const h=document.createElement("h3");h.textContent=w.start+"–"+w.end;box.appendChild(h);
           for(const [k,label,unit] of [["wind_speed_10m","Vítr"," m/s"],["wind_gusts_10m","Nárazy"," m/s"],["wind_direction_10m","Směr","°"],["wind_speed_80m","Vítr 80 m"," m/s"],["cloud_cover","Oblačnost"," %"],["precipitation_probability","Srážky"," %"]]){{const p=document.createElement("p");const a=w.m[k];p.textContent=label+": "+(a?a.map(x=>Number(x).toFixed(1)).join("–")+unit:"bez dat");box.appendChild(p);}}
+          const log=w.logistics,route=document.createElement("div");route.className="risks muted";route.textContent="Odjezd z Černošic "+log.departure+" · "+log.drive_min+" min autem · příjezd "+log.arrival+" · "+log.prepare_min+" min přesun a příprava · připraven ke startu "+w.start;box.appendChild(route);
           const p=document.createElement("p");p.textContent="Rizika: "+(w.notes.join("; ")||"bez dodatečných signálů");box.appendChild(p);
           const m=document.createElement("p");m.textContent="Modely: "+w.models.map(x=>x.model+" "+x.wind.toFixed(1)+"/"+x.gust.toFixed(1)+" m/s").join(" · ");box.appendChild(m);panel.appendChild(box);}}
         const stop=document.createElement("button");stop.textContent="Přestat sledovat";stop.onclick=()=>{{const [day,site]=selected.split("|");selected="overview";change(day,site,"clear");}};panel.appendChild(stop);
