@@ -3,6 +3,7 @@ on:
   schedule:
     # Refresh website every three hours, plus 07:00 local daily.
     - cron: '17 */3 * * *'
+    - cron: '11,41 * * * *'
     - cron: '0 5,6 * * *'
   workflow_dispatch:
 permissions:
@@ -24,7 +25,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Check Python syntax
-        run: python -m py_compile forecast.py build_site.py preferences.py morning_delivery.py
+        run: python -m py_compile forecast.py build_site.py preferences.py morning_delivery.py logistics.py tracking_delivery.py
       - name: Build public weather report
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -49,3 +50,25 @@ jobs:
           else
             echo "Website refreshed; no email outside 07:00 Prague."
           fi
+
+  tracking:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: paragliding-tracking
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check tracking syntax
+        run: python -m py_compile tracking_delivery.py logistics.py forecast.py preferences.py
+      - name: Monitor watched windows and send due emails
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_APP_PASSWORD: ${{ secrets.SMTP_APP_PASSWORD }}
+          REPORT_TO: jmkozel@gmail.com
+        run: python tracking_delivery.py
