@@ -73,6 +73,7 @@ def build():
     # Precompute details for every site/day, not only previously watched ones.
     # This allows immediate one-click watching without rebuilding the website.
     tracked=[]
+    site_limits={s[0]:{'min':s[3],'max':s[4],'gust':s[5],'directions':s[6]} for s in SITES}
     for site_config in SITES:
         site,lat,lon,*_=site_config
         loc=(lat,lon)
@@ -99,9 +100,10 @@ def build():
                                'rain':data['precipitation_probability'][i],
                                'screening':reason if not valid else 'Základní filtry splněny',
                                'consensus':status,
-                               'models':[{'model':r['model'],'wind':r['wind'],'gust':r['gust'],'pass':r['pass']} for r in rows]})
+                               'models':[{'model':r['model'],'wind':r['wind'],'gust':r['gust'],'direction':r['direction'],'rain':r['rain'],'pass':r['pass']} for r in rows]})
             tracked.append({'day':day,'site':site,'key':key,'hourly':hourly,
                             'baseline':email_baselines.get(key,{}).get('snapshot'),
+                            'limits':site_limits[site],
                             'items':[dict(w,trend=changes(dict(exists=True,day=day,site=site,start=w['start'],end=w['end'],m=w['m'],risks=w['notes'],logistics=w['logistics']),email_baselines.get(key,{}).get('snapshot'))) for d,ws in by_day.items() if d.isoformat()==day for w in ws if w['name']==site]})
     for d,items in by_day.items():
         for w in items:
@@ -152,10 +154,21 @@ def build():
     .report-time{{font-size:28px;font-weight:750;margin:5px 0 9px}}
     .flight-type{{display:inline-block;padding:5px 9px;border-radius:6px;background:#e7f1ec;color:#21634b;font-size:12px;font-weight:700}}
     .report-note{{max-width:520px;color:#687d8e;font-size:12px;line-height:1.5;margin:9px 0 0}}
-    .depart-box{{background:#e9f1f7;border-radius:9px;padding:12px 16px;text-align:center;min-width:145px}}
+    .depart-box{{background:#e9f1f7;border-radius:9px;padding:12px 16px;text-align:center;min-width:195px}}
     .depart-box small{{display:block;color:#60798e;font-size:10px;font-weight:700;letter-spacing:.4px}}
     .depart-box strong{{display:block;color:#1c537b;font-size:28px;margin-top:4px}}
-    .route-line{{margin:0 20px 16px;padding:10px 12px;background:#f3f7fa;border-radius:7px;color:#506c80;font-size:12px;line-height:1.6}}
+    .depart-route{{display:block;margin-top:6px;color:#52728a;font-size:11px;line-height:1.45;font-weight:400;max-width:280px}}
+    .direction-hint{{display:block;font-size:11px;color:#678095;margin-top:5px;line-height:1.4}}
+    .cancel-alert{{background:#fff0ef;border-left:4px solid #c72d3a;border-radius:10px;padding:16px 18px;margin:14px 0;color:#922b34}}
+    .cancel-alert strong{{display:block;font-size:20px;margin-bottom:7px}}
+    .cancel-alert ul{{margin:6px 0;padding-left:18px;line-height:1.6;font-size:13px}}
+    .model-matrix{{overflow-x:auto;max-width:100%;border:1px solid #dbe5ee;border-radius:9px;margin-top:10px}}
+    .model-matrix table{{border-collapse:collapse;white-space:nowrap;width:100%;font-size:12px}}
+    .model-matrix th,.model-matrix td{{border-bottom:1px solid #e5edf3;padding:9px 10px;text-align:center}}
+    .model-matrix th:first-child,.model-matrix td:first-child{{position:sticky;left:0;background:#f3f7fb;text-align:left;font-weight:700;z-index:1}}
+    .model-matrix th{{background:#eaf1f6;color:#47667c}}
+    .model-matrix td.model-pass{{background:#eef8f1;color:#26694b}}
+    .model-matrix td.model-fail{{background:#fff4f1;color:#9b4936}}
     .report-metrics{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid #e6edf2;border-bottom:1px solid #e6edf2}}
     .metric-cell{{padding:14px 16px;border-right:1px solid #e6edf2;border-bottom:1px solid #e6edf2}}
     .metric-cell small{{display:block;font-size:11px;color:#688095;margin-bottom:6px}}
@@ -237,21 +250,22 @@ def build():
           const typeNote=document.createElement("p");typeNote.className="report-note";typeNote.textContent="Směr a síla větru odpovídají filtrům pro daný svah. Termické a přeletové (XC) podmínky nejsou z těchto dat spolehlivě určitelné.";left.appendChild(typeNote);top.appendChild(left);
           const depart=document.createElement("div");depart.className="depart-box";
           const cap=document.createElement("small");cap.textContent="ODJEZD Z ČERNOŠIC";depart.appendChild(cap);
-          const big=document.createElement("strong");big.textContent=w.logistics.departure;depart.appendChild(big);top.appendChild(depart);box.appendChild(top);
-          const route=document.createElement("div");route.className="route-line";
-          route.textContent=w.logistics.drive_min+" min autem → příjezd "+w.logistics.arrival+" → "+w.logistics.prepare_min+" min přesun a příprava → start "+w.start;box.appendChild(route);
+          const big=document.createElement("strong");big.textContent=w.logistics.departure;depart.appendChild(big);
+          const route=document.createElement("span");route.className="depart-route";
+          route.textContent=w.logistics.drive_min+" min autem · příjezd "+w.logistics.arrival+" · "+w.logistics.prepare_min+" min přesun a příprava · start "+w.start;depart.appendChild(route);top.appendChild(depart);box.appendChild(top);
           const metrics=document.createElement("div");metrics.className="report-metrics";
           for(const [label,key,unit] of [["Vítr 10 m","wind_speed_10m"," m/s"],["Nárazy","wind_gusts_10m"," m/s"],["Směr větru","wind_direction_10m","°"],["Vítr 80 m","wind_speed_80m"," m/s"],["Oblačnost","cloud_cover"," %"],["Nízká oblačnost","cloud_cover_low"," %"],["Pravd. srážek","precipitation_probability"," %"]]){{
             const cell=document.createElement("div");cell.className="metric-cell";
             const labelEl=document.createElement("small");labelEl.textContent=label;cell.appendChild(labelEl);
-            const value=document.createElement("strong");value.textContent=range(key,unit);cell.appendChild(value);metrics.appendChild(cell);
+            const value=document.createElement("strong");value.textContent=range(key,unit);cell.appendChild(value);
+            if(key==="wind_direction_10m"&&d?.limits){{const hint=document.createElement("span");hint.className="direction-hint";hint.textContent="Létatelný směr: "+d.limits.directions.map(r=>r[0]+"–"+r[1]+"°").join(", ");cell.appendChild(hint);}}
+            metrics.appendChild(cell);
           }}
           box.appendChild(metrics);
           const foot=document.createElement("div");foot.className="report-foot";
           const risk=document.createElement("p");risk.innerHTML="<b>Rizika:</b> ";risk.appendChild(document.createTextNode(w.notes.join("; ")||"Bez dalších varovných signálů v hodnocených ukazatelích"));foot.appendChild(risk);
           const trend=document.createElement("p");trend.innerHTML="<b>Vývoj od posledního e-mailu:</b> ";trend.appendChild(document.createTextNode(w.trend?.join("; ")||"Bez změny"));foot.appendChild(trend);
-          const model=document.createElement("details");model.className="compact-models";const summary=document.createElement("summary");summary.textContent="Porovnání čtyř modelů";model.appendChild(summary);
-          for(const m of w.models){{const line=document.createElement("p");line.textContent=m.model+": vítr "+fmt(m.wind)+" m/s, náraz "+fmt(m.gust)+" m/s";model.appendChild(line);}}foot.appendChild(model);
+          
           box.appendChild(foot);panel.appendChild(box);
         }}
         if(d?.baseline){{const b=document.createElement("p");b.className="hour-legend";b.textContent=d.baseline.exists?"Poslední odeslaný report: okno "+d.baseline.start+"–"+d.baseline.end+", odjezd "+d.baseline.logistics.departure:"Poslední odeslaný report: bez kandidátního okna";panel.appendChild(b);}}
