@@ -260,32 +260,52 @@ def build():
           const daylight=d.hourly.filter(x=>Number(x.time.slice(0,2))>=7&&Number(x.time.slice(0,2))<=17);
           const hours=daylight.length?daylight:d.hourly;
           const heading=document.createElement("h3");heading.textContent="Předpověď po hodinách";panel.appendChild(heading);
-          const legend=document.createElement("p");legend.className="hour-legend";legend.textContent="Denní hodiny · vodorovným posunutím tabulky zobrazíš další údaje. Klepnutím na hodinu otevřeš podrobnosti a jednotlivé modely.";panel.appendChild(legend);
+          const legend=document.createElement("p");legend.className="hour-legend";legend.textContent="Vítr a nárazy v m/s, směr odkud ve stupních. Tabulku lze na mobilu posouvat vodorovně.";panel.appendChild(legend);
           const wrap=document.createElement("div");wrap.className="hour-table-wrap";
           const table=document.createElement("table");table.className="hour-table";
           const head=document.createElement("thead"),tr=document.createElement("tr");
-          for(const label of ["Čas","Vítr","Nárazy","Směr","80 m","Oblač.","Srážky","Shoda"]){{const th=document.createElement("th");th.textContent=label;tr.appendChild(th);}}
+          for(const label of ["Čas","Vítr","Nárazy","Směr","80 m","Oblač.","Nízká","Srážky","Shoda","Hodnocení"]){{const th=document.createElement("th");th.textContent=label;tr.appendChild(th);}}
           head.appendChild(tr);table.appendChild(head);
           const body=document.createElement("tbody");
+          const shortReason=hour=>{{
+            const raw=(hour.screening||"").toLowerCase();
+            if(raw.includes("směr"))return "Špatný směr";
+            if(raw.includes("vítr/nárazy")){{
+              if(hour.wind!=null&&hour.wind<2)return "Slabý vítr";
+              if(hour.gust!=null&&hour.wind!=null&&hour.gust>hour.wind*2.5)return "Silné nárazy";
+              return "Vítr mimo limit";
+            }}
+            if(raw.includes("80 m"))return "Silný výškový vítr";
+            if(raw.includes("konvektivní"))return "Konvekce";
+            if(raw.includes("pravděpodobnost"))return "Riziko deště";
+            if(raw.includes("srážky")||raw.includes("počasí"))return "Déšť / dohlednost";
+            if(raw.includes("chybí"))return "Chybí data";
+            if(hour.consensus!=="good")return "Neshoda modelů";
+            return "Vyhovuje";
+          }};
           for(const hour of hours){{
             const row=document.createElement("tr");
-            const vals=[hour.time,fmt(hour.wind),fmt(hour.gust),fmt(hour.direction,"°"),fmt(hour.upper),fmt(hour.cloud,"%"),fmt(hour.rain,"%"),hour.consensus==="good"?"3–4 ✓":hour.consensus==="uncertain"?"Nejistá":"Ne"];
-            vals.forEach((v,i)=>{{const cell=document.createElement("td");cell.textContent=v;if(i===7)cell.className=hour.consensus==="good"?"hour-good":"hour-bad";row.appendChild(cell);}});
+            const reason=shortReason(hour),good=reason==="Vyhovuje";
+            if(good)row.className="in-window";
+            const vals=[hour.time,fmt(hour.wind),fmt(hour.gust),fmt(hour.direction,"°"),fmt(hour.upper),fmt(hour.cloud,"%"),fmt(hour.low_cloud,"%"),fmt(hour.rain,"%"),hour.consensus==="good"?"3–4 ✓":hour.consensus==="uncertain"?"Nejistá":"Ne",reason];
+            vals.forEach((v,i)=>{{const cell=document.createElement("td");cell.textContent=v;
+              if(i===8)cell.className=hour.consensus==="good"?"hour-good":"hour-bad";
+              if(i===9)cell.className="reason "+(good?"hour-ok":"hour-no");
+              row.appendChild(cell);}});
             body.appendChild(row);
           }}
           table.appendChild(body);wrap.appendChild(table);panel.appendChild(wrap);
-          const units=document.createElement("p");units.className="hour-legend";units.textContent="Vítr, nárazy a 80 m v m/s · směr odkud ve stupních · oblačnost a pravděpodobnost srážek v %. Shoda označuje souhlas modelů, ne bezpečnost letu.";panel.appendChild(units);
-          const detailTitle=document.createElement("h3");detailTitle.textContent="Proč jednotlivé hodiny nevyhovují";panel.appendChild(detailTitle);
+          const note=document.createElement("p");note.className="hour-legend";note.textContent="Hodnocení uvádí hlavní důvod vyřazení, ne všechny souběžné důvody. Shoda modelů sama o sobě nepotvrzuje bezpečné podmínky.";panel.appendChild(note);
+          const details=document.createElement("details");details.className="hour-detail";
+          const summary=document.createElement("summary");summary.textContent="Podrobné hodnoty jednotlivých modelů";details.appendChild(summary);
+          const inner=document.createElement("div");inner.className="inner";
           for(const hour of hours){{
-            const detail=document.createElement("details");detail.className="hour-detail";
-            const summary=document.createElement("summary");summary.textContent=hour.time+" · "+(hour.screening==="Základní filtry splněny"?(hour.consensus==="good"?"Splněné filtry":"Nedostatečná shoda modelů"):hour.screening);detail.appendChild(summary);
-            const inner=document.createElement("div");inner.className="inner";
-            const caption=document.createElement("p");caption.className="hour-legend";caption.textContent="Model · vítr / nárazy (m/s) · splňuje limity";inner.appendChild(caption);
+            const h=document.createElement("h4");h.textContent=hour.time+" · "+shortReason(hour);inner.appendChild(h);
             for(const m of hour.models){{const r=document.createElement("div");r.className="model-row";
-              for(const value of [m.model,fmt(m.wind)+" / "+fmt(m.gust),m.pass?"✓ Ano":"× Ne"]){{const cell=document.createElement("span");cell.textContent=value;r.appendChild(cell);}}
+              for(const value of [m.model,fmt(m.wind)+" / "+fmt(m.gust)+" m/s",m.pass?"✓":"×"]){{const cell=document.createElement("span");cell.textContent=value;r.appendChild(cell);}}
               inner.appendChild(r);}}
-            detail.appendChild(inner);panel.appendChild(detail);
           }}
+          details.appendChild(inner);panel.appendChild(details);
         }}
 
       }}
