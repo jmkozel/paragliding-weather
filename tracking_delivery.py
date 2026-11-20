@@ -46,13 +46,19 @@ def read_state():
     if not obj:return {},None
     return json.loads(base64.b64decode(obj["content"])),obj["sha"]
 
-def snapshot(site,day,now,cache,models):
+def snapshot(site,day,now,cache,models,window_start=None):
     name,lat,lon,*_=site
     groups,_=consensus_windows(site,cache[(lat,lon)],models[(lat,lon)],now)
     matches=[g for g in groups if g[0][0].date().isoformat()==day]
+    if window_start:
+        # Match the original candidate by its start time when possible.
+        # If the forecast moves, retain the closest same-day window.
+        matches.sort(key=lambda g:abs(minutes(g[0][0].strftime("%H:%M"))-minutes(window_start)))
+        if matches and abs(minutes(matches[0][0].strftime("%H:%M"))-minutes(window_start))>120:
+            matches=[]
     if not matches:return {"exists":False,"day":day,"site":name}
     # Prefer the longest available candidate interval.
-    group=max(matches,key=lambda g:(g[-1][1]-g[0][0]).total_seconds())
+    group=matches[0] if window_start else max(matches,key=lambda g:(g[-1][1]-g[0][0]).total_seconds())
     start,end=group[0][0].strftime("%H:%M"),group[-1][1].strftime("%H:%M")
     m=metrics(cache[(lat,lon)],group)
     return {"exists":True,"day":day,"site":name,"start":start,"end":end,
@@ -158,9 +164,9 @@ def main():
     pending=[]
     for key in sorted(watched):
         try:
-            day,name=key.split("|",1)
+            day,name,*start_parts=key.split("|")
             if name not in sites:continue
-            snap=snapshot(sites[name],day,now,cache,models)
+            snap=snapshot(sites[name],day,now,cache,models,start_parts[0] if start_parts else None)
             old_state=state.get(key,{})
             old=old_state.get("snapshot")
             last=datetime.fromisoformat(old_state["sent_at"]) if old_state.get("sent_at") else None
