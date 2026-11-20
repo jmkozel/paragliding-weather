@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import urllib.request
+import urllib.error
 from pywebpush import webpush, WebPushException
 
 API="https://paragliding-push.jmkozel.workers.dev/subscriptions"
@@ -10,8 +11,22 @@ PAGE="https://jmkozel.github.io/paragliding-weather/"
 
 def subscriptions():
     req=urllib.request.Request(API,headers={"Authorization":"Bearer "+os.environ["PUSH_API_TOKEN"]})
-    with urllib.request.urlopen(req,timeout=20) as r:
-        return json.load(r)["subscriptions"]
+    try:
+        with urllib.request.urlopen(req,timeout=20) as r:
+            return json.load(r)["subscriptions"]
+    except urllib.error.HTTPError as exc:
+        content=exc.read(600).decode("utf-8","replace")
+        kind="Cloudflare edge" if "cloudflare" in exc.headers.get("Server","").lower() else "unknown server"
+        print(f"Push API failed: HTTP {exc.code}; server={kind}; content-type={exc.headers.get('Content-Type','unknown')}",file=sys.stderr)
+        if content.strip().startswith("{"):
+            try:
+                payload=json.loads(content)
+                print("API error: "+str(payload.get("error","unspecified")),file=sys.stderr)
+            except ValueError:
+                pass
+        else:
+            print("API returned non-JSON response (possibly Cloudflare security blocking)",file=sys.stderr)
+        raise RuntimeError("Could not access push subscriptions; no notifications were sent") from None
 
 def deliver(title,body,tag="paragliding-update",url=PAGE):
     devices=subscriptions()
