@@ -372,14 +372,27 @@ def build():
           table.appendChild(body);wrap.appendChild(table);panel.appendChild(wrap);
           const note=document.createElement("p");note.className="hour-legend";note.textContent="Hodnocení uvádí hlavní důvod vyřazení, ne všechny souběžné důvody. Shoda modelů sama o sobě nepotvrzuje bezpečné podmínky.";panel.appendChild(note);
           const details=document.createElement("details");details.className="hour-detail";
-          const summary=document.createElement("summary");summary.textContent="Podrobné hodnoty jednotlivých modelů";details.appendChild(summary);
+          const summary=document.createElement("summary");summary.textContent="Modely po hodinách · porovnání jako na Windy";details.appendChild(summary);
           const inner=document.createElement("div");inner.className="inner";
-          for(const hour of hours){{
-            const h=document.createElement("h4");h.textContent=hour.time+" · "+shortReason(hour);inner.appendChild(h);
-            for(const m of hour.models){{const r=document.createElement("div");r.className="model-row";
-              for(const value of [m.model,fmt(m.wind)+" / "+fmt(m.gust)+" m/s",m.pass?"✓":"×"]){{const cell=document.createElement("span");cell.textContent=value;r.appendChild(cell);}}
-              inner.appendChild(r);}}
+          const explain=document.createElement("p");explain.className="hour-legend";explain.textContent="Řádky = modely, sloupce = hodiny. V buňce je vítr / nárazy (m/s). Zelená = model splňuje limity, červená = nesplňuje. Tabulku lze posouvat do stran.";inner.appendChild(explain);
+          const matrix=document.createElement("div");matrix.className="model-matrix";
+          const mt=document.createElement("table"),mh=document.createElement("thead"),header=document.createElement("tr");
+          for(const label of ["Model",...hours.map(h=>h.time)]){{const th=document.createElement("th");th.textContent=label;header.appendChild(th);}}
+          mh.appendChild(header);mt.appendChild(mh);
+          const mb=document.createElement("tbody");
+          const modelNames=[...new Set(hours.flatMap(h=>h.models.map(m=>m.model)))];
+          for(const name of modelNames){{
+            const tr=document.createElement("tr"),th=document.createElement("td");th.textContent=name;tr.appendChild(th);
+            for(const hour of hours){{
+              const m=hour.models.find(x=>x.model===name),td=document.createElement("td");
+              td.textContent=m?(fmt(m.wind)+" / "+fmt(m.gust)):"–";
+              td.className=m?.pass?"model-pass":"model-fail";
+              if(m)td.title="Směr "+fmt(m.direction,"°")+" · srážky "+fmt(m.rain," mm");
+              tr.appendChild(td);
+            }}
+            mb.appendChild(tr);
           }}
+          mt.appendChild(mb);matrix.appendChild(mt);inner.appendChild(matrix);
           details.appendChild(inner);panel.appendChild(details);
         }}
 
