@@ -238,7 +238,69 @@ def build():
         if(!show)return;
         const d=trackedData.find(x=>x.key===selected),heading=document.createElement("h2");const [dateLabel,siteLabel]=selected.split("|");heading.className="tracked-heading";heading.textContent=siteLabel+" · "+dateLabel.slice(8)+"."+dateLabel.slice(5,7)+".";panel.appendChild(heading);
         const stop=document.createElement("button");stop.textContent="Přestat sledovat";stop.style.marginBottom="12px";stop.onclick=()=>{{const [day,...parts]=selected.split("|");selected="overview";change(day,parts.join("|"),"clear");}};panel.appendChild(stop);
-        if(!d||!d.items.length){{const p=document.createElement("p");p.textContent=d?"Aktuálně bez vhodného kandidátního okna. Sledování pokračuje. Níže jsou předpovídané hodnoty a důvody vyřazení.":"Pro tento den zatím nejsou k dispozici data z poslední aktualizace. Sledování zůstává aktivní.";panel.appendChild(p);}}
+        const original=d?.baseline?.exists?d.baseline:null;
+        const startHint=selected.split("|")[2]||original?.start||"";
+        const hourMinutes=t=>{{const p=t.split(":").map(Number);return p[0]*60+p[1];}};
+        const relevant=(d?.hourly||[]).filter(h=>{{
+          if(!startHint)return true;
+          const t=hourMinutes(h.time),start=hourMinutes(startHint);
+          const end=original?.end?hourMinutes(original.end):start+180;
+          return t>=Math.floor(start/60)*60&&t<Math.max(end,start+60);
+        }});
+        const evaluate=h=>{{
+          const reasons=[];
+          if(!d?.limits)return [h.screening||"Neznámé podmínky"];
+          const l=d.limits,w=h.wind,g=h.gust,dir=h.direction;
+          if(w==null||g==null||dir==null)reasons.push("Chybí data o větru");
+          else{{
+            if(w<l.min)reasons.push("Slabý vítr "+w.toFixed(1)+" m/s (min. "+l.min+")");
+            if(w>l.max)reasons.push("Silný vítr "+w.toFixed(1)+" m/s (max. "+l.max+")");
+            if(g>l.gust)reasons.push("Nárazy "+g.toFixed(1)+" m/s (max. "+l.gust+")");
+            if(!l.directions.some(r=>dir>=r[0]&&dir<=r[1]))reasons.push("Směr "+dir.toFixed(0)+"° mimo létatelný rozsah "+l.directions.map(r=>r.join("–")+"°").join(", "));
+          }}
+          if(h.upper!=null&&h.wind!=null&&(h.upper>12||h.upper-h.wind>7))reasons.push("Silný vítr v 80 m: "+h.upper.toFixed(1)+" m/s");
+          if(h.precipitation>0.1)reasons.push("Předpověď srážek "+h.precipitation.toFixed(1)+" mm");
+          if(h.rain>=60)reasons.push("Pravděpodobnost srážek "+h.rain.toFixed(0)+" %");
+          if(h.visibility!=null&&h.visibility<5000)reasons.push("Nízká dohlednost "+Math.round(h.visibility)+" m");
+          if(h.cape>=500)reasons.push("Zvýšená konvekce (CAPE "+Math.round(h.cape)+")");
+          const passed=h.models.filter(m=>m.pass).length;
+          if(h.consensus!=="good")reasons.push("Shoda jen "+passed+"/4 modelů");
+          if(!reasons.length&&h.screening!=="Základní filtry splněny")reasons.push(h.screening);
+          return reasons;
+        }};
+        if(!d||!d.items.length){{
+          if(!d){{const p=document.createElement("p");p.textContent="Pro tento den nejsou dostupná aktuální data. Sledování pokračuje.";panel.appendChild(p);}}
+          else{{
+            const alert=document.createElement("div");alert.className="cancel-alert";
+            const title=document.createElement("strong");title.textContent="❌ Sledované letové okno zaniklo";alert.appendChild(title);
+            const intro=document.createElement("p");intro.textContent=original?"Původní okno "+original.start+"–"+original.end+" už nesplňuje nastavené limity.":"Původní okno od "+(startHint||"neznámého času")+" už není mezi vyhovujícími okny. Původní hodnoty nejsou uložené, proto nelze určit jejich přesnou změnu.";alert.appendChild(intro);
+            const reasonMap=new Map();
+            for(const h of relevant)for(const reason of evaluate(h)){{const label=reason.replace(/ [0-9]+(?:\\.[0-9]+)?(?:°| m\/s| mm| %| m)?(?: \\(.*)?$/,"");reasonMap.set(label,reason);}}
+            const reasons=[...reasonMap.values()];
+            const ul=document.createElement("ul");
+            for(const reason of reasons.slice(0,7)){{const li=document.createElement("li");li.textContent=reason;ul.appendChild(li);}}
+            if(!reasons.length){{const li=document.createElement("li");li.textContent="V aktuálním modelu není dostatečně dlouhý souvislý úsek splňující všechna kritéria.";ul.appendChild(li);}}
+            alert.appendChild(ul);panel.appendChild(alert);
+            if(original){{
+              const oldBox=document.createElement("div");oldBox.className="tracked-report";
+              const oldTitle=document.createElement("div");oldTitle.className="report-top";oldTitle.textContent="Poslední odeslaná předpověď · "+original.start+"–"+original.end;oldBox.appendChild(oldTitle);
+              const oldMetrics=document.createElement("div");oldMetrics.className="report-metrics";
+              for(const [label,key,unit] of [["Vítr 10 m","wind_speed_10m"," m/s"],["Nárazy","wind_gusts_10m"," m/s"],["Směr větru","wind_direction_10m","°"],["Vítr 80 m","wind_speed_80m"," m/s"],["Oblačnost","cloud_cover"," %"],["Nízká oblačnost","cloud_cover_low"," %"],["Pravd. srážek","precipitation_probability"," %"]]){{
+                const cell=document.createElement("div");cell.className="metric-cell";
+                const lbl=document.createElement("small");lbl.textContent=label;cell.appendChild(lbl);
+                const v=document.createElement("strong");v.textContent=Array.isArray(original.m?.[key])?original.m[key].map(x=>Number(x).toFixed(1)).join("–")+unit:"–";cell.appendChild(v);
+                if(key==="wind_direction_10m"&&d.limits){{const hint=document.createElement("span");hint.className="direction-hint";hint.textContent="Létatelný směr: "+d.limits.directions.map(r=>r.join("–")+"°").join(", ");cell.appendChild(hint);}}
+                oldMetrics.appendChild(cell);
+              }}
+              oldBox.appendChild(oldMetrics);
+              const log=document.createElement("div");log.className="depart-box";log.style.margin="14px";
+              log.innerHTML="<small>PŮVODNĚ PLÁNOVANÝ ODJEZD</small>";
+              const time=document.createElement("strong");time.textContent=original.logistics?.departure||"–";log.appendChild(time);
+              const route=document.createElement("span");route.className="depart-route";route.textContent=(original.logistics?.drive_min??"–")+" min autem · příjezd "+(original.logistics?.arrival||"–")+" · "+(original.logistics?.prepare_min??"–")+" min příprava";log.appendChild(route);
+              oldBox.appendChild(log);panel.appendChild(oldBox);
+            }}
+          }}
+        }}
         else for(const w of d.items){{
           const box=document.createElement("article");box.className="tracked-report";
           const fmt=(v,unit="")=>v==null?"–":Number(v).toFixed(1)+unit;
@@ -247,7 +309,7 @@ def build():
           const left=document.createElement("div");left.innerHTML="<span class='eyebrow'>PŘEDPOVÍDANÉ LETOVÉ OKNO</span>";
           const time=document.createElement("div");time.className="report-time";time.textContent=w.start+"–"+w.end;left.appendChild(time);
           const type=document.createElement("span");type.className="flight-type";type.textContent="Svahové létání · podmíněně";left.appendChild(type);
-          const typeNote=document.createElement("p");typeNote.className="report-note";typeNote.textContent="Směr a síla větru odpovídají filtrům pro daný svah. Termické a přeletové (XC) podmínky nejsou z těchto dat spolehlivě určitelné.";left.appendChild(typeNote);top.appendChild(left);
+          const typeNote=document.createElement("p");typeNote.className="report-note";typeNote.textContent="Směr a síla větru odpovídají filtrům pro daný svah. Termika a XC nejsou spolehlivě vyhodnoceny.";left.appendChild(typeNote);top.appendChild(left);
           const depart=document.createElement("div");depart.className="depart-box";
           const cap=document.createElement("small");cap.textContent="ODJEZD Z ČERNOŠIC";depart.appendChild(cap);
           const big=document.createElement("strong");big.textContent=w.logistics.departure;depart.appendChild(big);
@@ -265,7 +327,6 @@ def build():
           const foot=document.createElement("div");foot.className="report-foot";
           const risk=document.createElement("p");risk.innerHTML="<b>Rizika:</b> ";risk.appendChild(document.createTextNode(w.notes.join("; ")||"Bez dalších varovných signálů v hodnocených ukazatelích"));foot.appendChild(risk);
           const trend=document.createElement("p");trend.innerHTML="<b>Vývoj od posledního e-mailu:</b> ";trend.appendChild(document.createTextNode(w.trend?.join("; ")||"Bez změny"));foot.appendChild(trend);
-          
           box.appendChild(foot);panel.appendChild(box);
         }}
         if(d?.baseline){{const b=document.createElement("p");b.className="hour-legend";b.textContent=d.baseline.exists?"Poslední odeslaný report: okno "+d.baseline.start+"–"+d.baseline.end+", odjezd "+d.baseline.logistics.departure:"Poslední odeslaný report: bez kandidátního okna";panel.appendChild(b);}}
