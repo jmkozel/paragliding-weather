@@ -185,6 +185,24 @@ def main():
     # Only delivered emails become comparison baselines.
     for key,snap,_,_ in pending:state[key]={"snapshot":snap,"sent_at":now.isoformat()}
     github("PUT",state,sha)
+    # Push is a second delivery channel for the SAME due events.
+    # Email and baseline remain successful even if push fails.
+    if os.environ.get("PUSH_API_TOKEN") and os.environ.get("VAPID_PRIVATE_KEY"):
+        try:
+            from push_delivery import deliver
+            for key,snap,old,reason in pending:
+                title=("🛑 Okno zrušeno" if not snap["exists"] else
+                       "🪂 Okno obnoveno" if old and not old.get("exists") else
+                       "🪂 "+reason)
+                window=f'{snap["start"]}–{snap["end"]}' if snap["exists"] else "aktuálně bez vhodného okna"
+                diffs=changes(snap,old)
+                detail="; ".join(diffs[:2]) if diffs else reason
+                message=f'{snap["site"]} · {snap["day"]} · {window}. {detail}'
+                deliver(title,message,tag="watch-"+key)
+        except Exception as exc:
+            print(f"Push delivery failed; email was preserved: {type(exc).__name__}: {exc}")
+    else:
+        print("Push secrets not configured; tracked emails remain enabled")
     print(f"Sent {len(pending)} tracked-window updates and persisted baseline")
 
 if __name__=="__main__":main()
