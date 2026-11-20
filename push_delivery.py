@@ -10,7 +10,7 @@ API="https://paragliding-push.jmkozel.workers.dev/subscriptions"
 PAGE="https://jmkozel.github.io/paragliding-weather/"
 
 def subscriptions():
-    req=urllib.request.Request(API,headers={"Authorization":"Bearer "+os.environ["PUSH_API_TOKEN"]})
+    req=urllib.request.Request(API,headers={"Authorization":"Bearer "+os.environ["PUSH_API_TOKEN"],"Accept":"application/json","User-Agent":"ParaglidingPushDiagnostic/1.0"})
     try:
         with urllib.request.urlopen(req,timeout=20) as r:
             return json.load(r)["subscriptions"]
