@@ -9,7 +9,7 @@ from preferences import load, excluded
 from logistics import departure
 from tracking_delivery import read_state, changes
 from urllib.parse import quote
-from forecast import SITES, fetch_all_sites, fetch_model_comparison, consensus_windows, metrics, risk_notes, cz_day, display_range
+from forecast import SITES, fetch_all_sites, fetch_model_comparison, consensus_windows, metrics, risk_notes, cz_day, display_range, screening, model_consensus
 
 def build():
     now=datetime.now(ZoneInfo("Europe/Prague"))
@@ -74,7 +74,27 @@ def build():
     for key,action in prefs['windows'].items():
         if action=='watch':
             day,site=key.split('|',1)
-            tracked.append({'day':day,'site':site,'key':key,'items':[dict(w,trend=changes(dict(exists=True,day=day,site=site,start=w['start'],end=w['end'],m=w['m'],risks=w['notes'],logistics=w['logistics']),email_baselines.get(key,{}).get('snapshot'))) for d,ws in by_day.items() if d.isoformat()==day for w in ws if w['name']==site]})
+            site_config=next((s for s in SITES if s[0]==site),None)
+            hourly=[]
+            if site_config:
+                loc=(site_config[1],site_config[2])
+                data=cache[loc]['hourly']
+                for i,t in enumerate(data['time']):
+                    if not t.startswith(day):continue
+                    valid,reason=screening(site_config,data,i)
+                    status,rows=model_consensus(site_config,comparison[loc],t)
+                    hourly.append({'time':t[11:16],'wind':data['wind_speed_10m'][i],
+                                   'gust':data['wind_gusts_10m'][i],
+                                   'direction':data['wind_direction_10m'][i],
+                                   'upper':data['wind_speed_80m'][i],
+                                   'cloud':data['cloud_cover'][i],
+                                   'rain':data['precipitation_probability'][i],
+                                   'screening':reason if not valid else 'Základní filtry splněny',
+                                   'consensus':status,
+                                   'models':[{'model':r['model'],'wind':r['wind'],'gust':r['gust'],'pass':r['pass']} for r in rows]})
+            tracked.append({'day':day,'site':site,'key':key,'hourly':hourly,
+                            'baseline':email_baselines.get(key,{}).get('snapshot'),
+                            'items':[dict(w,trend=changes(dict(exists=True,day=day,site=site,start=w['start'],end=w['end'],m=w['m'],risks=w['notes'],logistics=w['logistics']),email_baselines.get(key,{}).get('snapshot'))) for d,ws in by_day.items() if d.isoformat()==day for w in ws if w['name']==site]})
     errorblock=('<section class="warning"><b>Chyby dat</b><p>'+ '<br>'.join(esc(x) for x in errors)+'</p></section>') if errors else ''
     empty='<p class="empty">V modelu nejsou nalezena kandidátní okna ≥ 60 minut. Neznamená to automaticky nelétatelné počasí.</p>' if not count else ''
     doc=f"""<!doctype html><html lang="cs"><head><meta charset="utf-8">
@@ -134,18 +154,25 @@ def build():
         const entries=Object.entries(windows).filter(([k,v])=>v==="watch").sort();
         const button=(label,key)=>{{const b=document.createElement("button");b.textContent=label;b.classList.toggle("active",selected===key);b.onclick=()=>{{selected=key;renderTracked();}};nav.appendChild(b);}};
         button("Přehled","overview");
-        for(const [key] of entries){{const d=trackedData.find(x=>x.key===key);const [day,site]=key.split("|");const times=d?.items?.[0]?d.items[0].start+"–"+d.items[0].end:"bez okna";button(day.slice(8)+"."+day.slice(5,7)+" "+site+" "+times,key);}}
+        for(const [key] of entries){{const d=trackedData.find(x=>x.key===key);const [day,site]=key.split("|");button(day.slice(8)+"."+day.slice(5,7)+" "+site,key);}}
         if(selected!=="overview"&&!entries.some(([k])=>k===selected))selected="overview";
         const show=selected!=="overview";document.getElementById("overview").hidden=show;panel.hidden=!show;
         if(!show)return;
         const d=trackedData.find(x=>x.key===selected),heading=document.createElement("h2");heading.textContent=selected.replace("|"," · ");panel.appendChild(heading);
-        if(!d||!d.items.length){{const p=document.createElement("p");p.textContent="Aktuálně bez kandidátního okna. Předpověď se mohla změnit.";panel.appendChild(p);}}
+        if(!d||!d.items.length){{const p=document.createElement("p");p.textContent="Aktuálně bez vhodného kandidátního okna. Sledování pokračuje. Níže jsou skutečné předpovídané hodnoty i důvody, proč hodiny neprošly filtry.";panel.appendChild(p);}}
         else for(const w of d.items){{const box=document.createElement("article");box.className="window";box.style.padding="15px";const h=document.createElement("h3");h.textContent=w.start+"–"+w.end;box.appendChild(h);
           for(const [k,label,unit] of [["wind_speed_10m","Vítr"," m/s"],["wind_gusts_10m","Nárazy"," m/s"],["wind_direction_10m","Směr","°"],["wind_speed_80m","Vítr 80 m"," m/s"],["cloud_cover","Oblačnost"," %"],["precipitation_probability","Srážky"," %"]]){{const p=document.createElement("p");const a=w.m[k];p.textContent=label+": "+(a?a.map(x=>Number(x).toFixed(1)).join("–")+unit:"bez dat");box.appendChild(p);}}
           const trend=document.createElement("p");trend.textContent="Vývoj od posledního e-mailu: "+(w.trend?.join("; ")||"bez změny");box.appendChild(trend);
           const log=w.logistics,route=document.createElement("div");route.className="risks muted";route.textContent="Odjezd z Černošic "+log.departure+" · "+log.drive_min+" min autem · příjezd "+log.arrival+" · "+log.prepare_min+" min přesun a příprava · připraven ke startu "+w.start;box.appendChild(route);
           const p=document.createElement("p");p.textContent="Rizika: "+(w.notes.join("; ")||"bez dodatečných signálů");box.appendChild(p);
           const m=document.createElement("p");m.textContent="Modely: "+w.models.map(x=>x.model+" "+x.wind.toFixed(1)+"/"+x.gust.toFixed(1)+" m/s").join(" · ");box.appendChild(m);panel.appendChild(box);}}
+        if(d?.baseline){{const b=document.createElement("p");b.className="risks muted";b.textContent=d.baseline.exists?"Poslední odeslaný report: okno "+d.baseline.start+"–"+d.baseline.end+", plánovaný odjezd "+d.baseline.logistics.departure:"Poslední odeslaný report: bez kandidátního okna";panel.appendChild(b);}}
+        if(d?.hourly?.length){{const h=document.createElement("h3");h.textContent="Hodinová předpověď a důvody vyřazení";panel.appendChild(h);
+          for(const hour of d.hourly){{const p=document.createElement("div");p.className="risks muted";p.style.lineHeight="1.6";
+            const fmt=v=>v==null?"bez dat":Number(v).toFixed(1);
+            p.textContent=hour.time+" · vítr "+fmt(hour.wind)+" m/s · nárazy "+fmt(hour.gust)+" m/s · směr "+fmt(hour.direction)+"° · 80 m "+fmt(hour.upper)+" m/s · oblačnost "+fmt(hour.cloud)+" % · srážky "+fmt(hour.rain)+" % · "+hour.screening+" · modely: "+(hour.consensus==="good"?"shoda":hour.consensus==="uncertain"?"nejistá shoda":"bez dostatečné shody")+" · "+hour.models.map(m=>m.model+" "+fmt(m.wind)+"/"+fmt(m.gust)+" m/s "+(m.pass?"✓":"×")).join(", ");
+            panel.appendChild(p);}}
+        }}
         const stop=document.createElement("button");stop.textContent="Přestat sledovat";stop.onclick=()=>{{const [day,site]=selected.split("|");selected="overview";change(day,site,"clear");}};panel.appendChild(stop);
       }}
       function render(){{
