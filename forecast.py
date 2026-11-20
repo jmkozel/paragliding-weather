@@ -7,6 +7,7 @@ import smtplib
 import ssl
 import urllib.parse
 import urllib.request
+import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 from email.message import EmailMessage
@@ -39,6 +40,18 @@ HOURLY = [
 BAD_CODES = {45,48,51,53,55,56,57,61,63,65,66,67,71,73,75,77,
              80,81,82,85,86,95,96,99}
 
+def open_with_retry(request, timeout=35, attempts=3):
+    """Retry transient network errors; never fabricate weather data."""
+    last = None
+    for attempt in range(attempts):
+        try:
+            return urllib.request.urlopen(request, timeout=timeout)
+        except (OSError, TimeoutError) as exc:
+            last = exc
+            if attempt + 1 < attempts:
+                time.sleep(2 ** attempt)
+    raise RuntimeError(f"Weather API unavailable after {attempts} attempts: {last}") from last
+
 def fetch(lat, lon):
     args = {
         "latitude":lat,"longitude":lon,"timezone":"Europe/Prague",
@@ -46,7 +59,7 @@ def fetch(lat, lon):
         "hourly":",".join(HOURLY),"daily":"sunrise,sunset",
     }
     url = "https://api.open-meteo.com/v1/forecast?" + urllib.parse.urlencode(args)
-    with urllib.request.urlopen(url, timeout=35) as response:
+    with open_with_retry(url, timeout=35) as response:
         obj = json.load(response)
     if "hourly" not in obj or "daily" not in obj:
         raise ValueError("Open-Meteo nevrátilo hodinová/denní data")
@@ -64,7 +77,7 @@ def fetch_all_sites():
     }
     url="https://api.open-meteo.com/v1/forecast?"+urllib.parse.urlencode(args)
     req=urllib.request.Request(url,headers={"User-Agent":"paragliding-weather/1.0"})
-    with urllib.request.urlopen(req,timeout=60) as response:
+    with open_with_retry(req,timeout=35) as response:
         payload=json.load(response)
     results=payload if isinstance(payload,list) else [payload]
     if len(results)!=len(locations):
@@ -97,7 +110,7 @@ def fetch_model_comparison():
         }
         url="https://api.open-meteo.com/v1/forecast?"+urllib.parse.urlencode(args)
         req=urllib.request.Request(url,headers={"User-Agent":"paragliding-weather/1.1"})
-        with urllib.request.urlopen(req,timeout=60) as response:
+        with open_with_retry(req,timeout=35) as response:
             payload=json.load(response)
         results=payload if isinstance(payload,list) else [payload]
         if len(results)!=len(locations):
