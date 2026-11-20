@@ -26,10 +26,11 @@ jobs:
         with:
           python-version: '3.12'
       - name: Check Python syntax
-        run: python -m py_compile forecast.py build_site.py preferences.py morning_delivery.py logistics.py tracking_delivery.py
+        run: python -m py_compile forecast.py build_site.py preferences.py morning_delivery.py logistics.py tracking_delivery.py pwa_assets.py push_delivery.py
       - name: Build public weather report
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
         run: python build_site.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
