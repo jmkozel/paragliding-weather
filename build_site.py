@@ -1,6 +1,7 @@
 """Generate public, read-only static paragliding dashboard. No private data."""
 import html
 import json
+import os
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -153,6 +154,8 @@ def build():
     .choices button[aria-pressed="true"]{{background:#204d70;color:white}}
     .risks{{margin:8px 0;padding:9px;background:#fff4e9;border-radius:6px;color:#684a30}}
     .risks.muted{{background:#f0f4f7;color:#526779}}
+    .push-settings{{background:white;border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px}}
+    .push-settings p{{color:#61758a}}
     .tracked-report{{background:#fff;border:1px solid #d9e4ee;border-radius:13px;overflow:hidden;margin:12px 0 20px;box-shadow:0 2px 6px #dce5ee66}}
     .report-top{{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:19px 20px 14px}}
     .eyebrow{{font-size:10px;font-weight:700;letter-spacing:.9px;color:#6c8397}}
@@ -215,7 +218,7 @@ def build():
     </style></head><body><header><div style="font-size:12px;letter-spacing:1px">🪂 PARAGLIDING</div>
     <h1>Letová okna</h1><p class="compact-count"><span id="compact-count"></span> · aktualizováno {now:%d.%m. %H:%M}</p></header>
     <main><p id="hidden-info" class="muted-note" role="status" aria-live="polite" style="display:none"></p><nav id="tracked-nav" aria-label="Sledovaná okna"></nav><section id="tracked-detail" hidden></section><div id="overview">
-    <div class="grid">{''.join(cards)}</div>{empty}{errorblock}
+    <section class="push-settings"><b>🔔 Mobilní notifikace</b><p id="push-status">Kontroluji dostupnost…</p><button id="push-enable" hidden>Zapnout notifikace</button><button id="push-disable" hidden>Vypnout notifikace</button></section><div class="grid">{''.join(cards)}</div>{empty}{errorblock}
     <details><summary>Spravovat skryté dny a okna</summary><div id="restore-list"></div></details></div>
     <footer><p><b>Metodika:</b> V hlavním přehledu jsou pouze okna, kde alespoň 3 ze 4 modelů splňují místní limity a žádný neukazuje výrazný exces. Navíc platí základní meteorologické filtry. Modely nejsou nezávislé a jejich shoda nezaručuje bezpečný let.</p><b>Bezpečnost:</b> Kandidátní okno je automatický screening, nikoli doporučení ke startu.
     Vždy ověř aktuální měření, výškový vítr, rotory, fronty a místní podmínky.
@@ -471,8 +474,43 @@ def build():
           render();
         }}catch(e){{info.textContent='Nepodařilo se načíst rozhodnutí: '+e.message;}}
       }}
+      const PUSH_URL='https://paragliding-push.jmkozel.workers.dev';
+      const VAPID_KEY={json.dumps(os.environ.get("VAPID_PUBLIC_KEY",""))};
+      const status=document.getElementById('push-status'),enable=document.getElementById('push-enable'),disable=document.getElementById('push-disable');
+      const bytes=s=>Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-s.length%4)%4)),c=>c.charCodeAt(0));
+      async function refreshPush(){{
+        if(!VAPID_KEY){{status.textContent='Notifikace čekají na dokončení nastavení serveru.';return;}}
+        if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)){{status.textContent='Prohlížeč nepodporuje push notifikace.';return;}}
+        try{{const reg=await navigator.serviceWorker.ready,sub=await reg.pushManager.getSubscription();status.textContent=sub?'Notifikace jsou zapnuté.':'Notifikace jsou vypnuté.';enable.hidden=!!sub;disable.hidden=!sub;}}
+        catch(e){{status.textContent='Chyba: '+e.message;}}
+      }}
+      enable.onclick=async()=>{{
+        enable.disabled=true;
+        try{{
+          if(await Notification.requestPermission()!=='granted')throw Error('Notifikace nejsou povolené');
+          const reg=await navigator.serviceWorker.ready;
+          const sub=await reg.pushManager.subscribe({{userVisibleOnly:true,applicationServerKey:bytes(VAPID_KEY)}});
+          const r=await fetch(PUSH_URL+'/subscriptions',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{subscription:sub.toJSON()}})}});
+          if(!r.ok){{await sub.unsubscribe();throw Error('Registrace na serveru: HTTP '+r.status);}}
+          await refreshPush();
+        }}catch(e){{status.textContent='Registrace selhala: '+e.message;}}
+        finally{{enable.disabled=false;}}
+      }};
+      disable.onclick=async()=>{{
+        disable.disabled=true;
+        try{{
+          const reg=await navigator.serviceWorker.ready,sub=await reg.pushManager.getSubscription();
+          if(sub){{
+            const r=await fetch(PUSH_URL+'/subscriptions',{{method:'DELETE',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{subscription:sub.toJSON()}})}});
+            if(!r.ok)throw Error('Odhlášení na serveru selhalo');
+            await sub.unsubscribe();
+          }}
+          await refreshPush();
+        }}catch(e){{status.textContent='Odhlášení selhalo: '+e.message;}}
+        finally{{disable.disabled=false;}}
+      }};
       render();sync();
-      if("serviceWorker" in navigator){{navigator.serviceWorker.register("./sw.js").catch(err=>console.warn("PWA worker:",err));}}
+      if("serviceWorker" in navigator){{navigator.serviceWorker.register("./sw.js").then(refreshPush).catch(err=>console.warn("PWA worker:",err));}}
     }})();
     </script></body></html>"""
     out=Path("public");out.mkdir(exist_ok=True)
