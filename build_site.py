@@ -70,28 +70,31 @@ def build():
     except Exception as exc:
         print('Email baseline unavailable for web trend: '+str(exc))
         email_baselines={}
+    # Precompute details for every site/day, not only previously watched ones.
+    # This allows immediate one-click watching without rebuilding the website.
     tracked=[]
-    for key,action in prefs['windows'].items():
-        if action=='watch':
-            day,site=key.split('|',1)
-            site_config=next((s for s in SITES if s[0]==site),None)
+    for site_config in SITES:
+        site,lat,lon,*_=site_config
+        loc=(lat,lon)
+        data=cache[loc]['hourly']
+        for day in dict.fromkeys(t[:10] for t in data['time']):
+            key=day+'|'+site
             hourly=[]
-            if site_config:
-                loc=(site_config[1],site_config[2])
-                data=cache[loc]['hourly']
-                for i,t in enumerate(data['time']):
-                    if not t.startswith(day):continue
-                    valid,reason=screening(site_config,data,i)
-                    status,rows=model_consensus(site_config,comparison[loc],t)
-                    hourly.append({'time':t[11:16],'wind':data['wind_speed_10m'][i],
-                                   'gust':data['wind_gusts_10m'][i],
-                                   'direction':data['wind_direction_10m'][i],
-                                   'upper':data['wind_speed_80m'][i],
-                                   'cloud':data['cloud_cover'][i],
-                                   'rain':data['precipitation_probability'][i],
-                                   'screening':reason if not valid else 'Základní filtry splněny',
-                                   'consensus':status,
-                                   'models':[{'model':r['model'],'wind':r['wind'],'gust':r['gust'],'pass':r['pass']} for r in rows]})
+            for i,t in enumerate(data['time']):
+                if not t.startswith(day):continue
+                # Only daytime hours are useful for launch screening.
+                if not (7<=int(t[11:13])<=17):continue
+                valid,reason=screening(site_config,data,i)
+                status,rows=model_consensus(site_config,comparison[loc],t)
+                hourly.append({'time':t[11:16],'wind':data['wind_speed_10m'][i],
+                               'gust':data['wind_gusts_10m'][i],
+                               'direction':data['wind_direction_10m'][i],
+                               'upper':data['wind_speed_80m'][i],
+                               'cloud':data['cloud_cover'][i],
+                               'rain':data['precipitation_probability'][i],
+                               'screening':reason if not valid else 'Základní filtry splněny',
+                               'consensus':status,
+                               'models':[{'model':r['model'],'wind':r['wind'],'gust':r['gust'],'pass':r['pass']} for r in rows]})
             tracked.append({'day':day,'site':site,'key':key,'hourly':hourly,
                             'baseline':email_baselines.get(key,{}).get('snapshot'),
                             'items':[dict(w,trend=changes(dict(exists=True,day=day,site=site,start=w['start'],end=w['end'],m=w['m'],risks=w['notes'],logistics=w['logistics']),email_baselines.get(key,{}).get('snapshot'))) for d,ws in by_day.items() if d.isoformat()==day for w in ws if w['name']==site]})
@@ -181,7 +184,7 @@ def build():
         const show=selected!=="overview";document.getElementById("overview").hidden=show;panel.hidden=!show;
         if(!show)return;
         const d=trackedData.find(x=>x.key===selected),heading=document.createElement("h2");const [dateLabel,siteLabel]=selected.split("|");heading.className="tracked-heading";heading.textContent=siteLabel+" · "+dateLabel.slice(8)+"."+dateLabel.slice(5,7)+".";panel.appendChild(heading);
-        if(!d||!d.items.length){{const p=document.createElement("p");p.textContent="Aktuálně bez vhodného kandidátního okna. Sledování pokračuje. Níže jsou skutečné předpovídané hodnoty i důvody, proč hodiny neprošly filtry.";panel.appendChild(p);}}
+        if(!d||!d.items.length){{const p=document.createElement("p");p.textContent=d?"Aktuálně bez vhodného kandidátního okna. Sledování pokračuje. Níže jsou předpovídané hodnoty a důvody vyřazení.":"Pro tento den zatím nejsou k dispozici data z poslední aktualizace. Sledování zůstává aktivní.";panel.appendChild(p);}}
         else for(const w of d.items){{const box=document.createElement("article");box.className="window";box.style.padding="15px";const h=document.createElement("h3");h.textContent=w.start+"–"+w.end;box.appendChild(h);
           for(const [k,label,unit] of [["wind_speed_10m","Vítr"," m/s"],["wind_gusts_10m","Nárazy"," m/s"],["wind_direction_10m","Směr","°"],["wind_speed_80m","Vítr 80 m"," m/s"],["cloud_cover","Oblačnost"," %"],["precipitation_probability","Srážky"," %"]]){{const p=document.createElement("p");const a=w.m[k];p.textContent=label+": "+(a?a.map(x=>Number(x).toFixed(1)).join("–")+unit:"bez dat");box.appendChild(p);}}
           const trend=document.createElement("p");trend.textContent="Vývoj od posledního e-mailu: "+(w.trend?.join("; ")||"bez změny");box.appendChild(trend);
