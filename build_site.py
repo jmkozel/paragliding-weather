@@ -168,7 +168,7 @@ def build():
     .muted-note{{font-size:12px;color:#63758a;line-height:1.5;margin:10px 0}}
     </style></head><body><header><div style="font-size:12px;letter-spacing:1px">🪂 PARAGLIDING</div>
     <h1>Letová okna</h1><p class="compact-count"><span id="compact-count"></span> · aktualizováno {now:%d.%m. %H:%M}</p></header>
-    <main><nav id="tracked-nav" aria-label="Sledovaná okna"></nav><section id="tracked-detail" hidden></section><div id="overview">
+    <main><p id="hidden-info" class="muted-note" role="status" aria-live="polite" style="display:none"></p><nav id="tracked-nav" aria-label="Sledovaná okna"></nav><section id="tracked-detail" hidden></section><div id="overview">
     <div class="grid">{''.join(cards)}</div>{empty}{errorblock}
     <details><summary>Spravovat skryté dny a okna</summary><div id="restore-list"></div></details></div>
     <footer><p><b>Metodika:</b> V hlavním přehledu jsou pouze okna, kde alespoň 3 ze 4 modelů splňují místní limity a žádný neukazuje výrazný exces. Navíc platí základní meteorologické filtry. Modely nejsou nezávislé a jejich shoda nezaručuje bezpečný let.</p><b>Bezpečnost:</b> Kandidátní okno je automatický screening, nikoli doporučení ke startu.
@@ -269,7 +269,6 @@ def build():
         const hidden=cards.filter(card=>card.hidden).length;
         const watched=Object.values(windows).filter(v=>v==='watch').length;
         document.getElementById('compact-count').textContent=cards.length+' nalezených oken, z toho '+watched+' sledovaných a '+hidden+' skrytých';
-        info.textContent='';
         renderTracked();
       }}
       async function change(day,site,action){{
