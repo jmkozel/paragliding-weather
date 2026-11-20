@@ -45,8 +45,8 @@ def build():
             m=item["m"]
             def metric(key,unit="",digits=1):return esc(display_range(m[key],unit,digits))
             windy=f'https://www.windy.com/{item["lat"]:.3f}/{item["lon"]:.3f}?{item["lat"]:.3f},{item["lon"]:.3f},11'
-            window_key=f'{day.isoformat()}|{item["name"]}'
-            is_excluded=excluded(prefs,day.isoformat(),item["name"])
+            window_key=f'{day.isoformat()}|{item["name"]}|{item["start"]}'
+            is_excluded=excluded(prefs,day.isoformat(),item["name"]) or prefs["windows"].get(window_key)=="exclude"
             is_watched=prefs["windows"].get(window_key)=="watch"
             notes=item["notes"]
             model_table="<div class='risks muted'><b>Modely: vítr / max. náraz (m/s)</b><br>"+ "<br>".join(f"{esc(row['model'])}: {row['wind']:.1f} / {row['gust']:.1f}" for row in item["models"])+"</div>"
@@ -98,6 +98,11 @@ def build():
             tracked.append({'day':day,'site':site,'key':key,'hourly':hourly,
                             'baseline':email_baselines.get(key,{}).get('snapshot'),
                             'items':[dict(w,trend=changes(dict(exists=True,day=day,site=site,start=w['start'],end=w['end'],m=w['m'],risks=w['notes'],logistics=w['logistics']),email_baselines.get(key,{}).get('snapshot'))) for d,ws in by_day.items() if d.isoformat()==day for w in ws if w['name']==site]})
+    for d,items in by_day.items():
+        for w in items:
+            key=d.isoformat()+'|'+w['name']+'|'+w['start']
+            base=next(x for x in tracked if x['key']==d.isoformat()+'|'+w['name'])
+            tracked.append(dict(base,key=key,items=[dict(w,trend=changes(dict(exists=True,day=d.isoformat(),site=w['name'],start=w['start'],end=w['end'],m=w['m'],risks=w['notes'],logistics=w['logistics']),email_baselines.get(key,{}).get('snapshot')))],baseline=email_baselines.get(key,{}).get('snapshot')))
     errorblock=('<section class="warning"><b>Chyby dat</b><p>'+ '<br>'.join(esc(x) for x in errors)+'</p></section>') if errors else ''
     empty='<p class="empty">V modelu nejsou nalezena kandidátní okna ≥ 60 minut. Neznamená to automaticky nelétatelné počasí.</p>' if not count else ''
     doc=f"""<!doctype html><html lang="cs"><head><meta charset="utf-8">
@@ -148,18 +153,15 @@ def build():
     .model-row:last-child{{border-bottom:0}}
     .hour-legend{{font-size:12px;color:#61758a;margin:9px 0 16px;line-height:1.5}}
     @media(max-width:500px){{.hour-table th,.hour-table td{{padding:10px 7px}}}}
-    .window[hidden]{{display:none!important}}
+    .window[hidden],#overview[hidden],#tracked-detail[hidden]{{display:none!important}}
+    .compact-count{{font-size:12px;color:#d2e1ef;margin:5px 0 0}}
     .muted-note{{font-size:12px;color:#63758a;line-height:1.5;margin:10px 0}}
     </style></head><body><header><div style="font-size:12px;letter-spacing:1px">🪂 PARAGLIDING</div>
-    <h1>Letová okna</h1><p>Výhled na 5 dní · aktualizováno {now:%d.%m.%Y v %H:%M} (Praha)</p></header>
-    <main><nav id="tracked-nav" aria-label="Sledovaná okna"></nav><section id="tracked-detail" hidden></section><div id="overview"><div class="summary"><span><b>{count}</b> podrobných letových oken</span><span><b>{len(days)}</b> dní s okny</span><span><b>{len(SITES)-len(errors)}/{len(SITES)}</b> vyhodnocených sektorů</span></div>
-    <p class="muted-note">V hlavním přehledu jsou pouze okna, kde alespoň 3 ze 4 modelů splňují místní limity a žádný neukazuje výrazný exces. Navíc platí základní meteorologické filtry. Modely nejsou nezávislé a jejich shoda nezaručuje bezpečný let.</p>
-    <p class="muted-note">Rozhodnutí ukládáš jedním kliknutím. Skryté možnosti lze obnovit níže.</p>
-    <nav aria-label="Filtrovat podle dne"><button class="filter active" data-day="all">Všechny dny</button>{controls}</nav>
-    <div id="day-actions"></div><p id="hidden-info" class="muted-note"></p>
+    <h1>Letová okna</h1><p class="compact-count"><span id="compact-count"></span> · aktualizováno {now:%d.%m. %H:%M}</p></header>
+    <main><nav id="tracked-nav" aria-label="Sledovaná okna"></nav><section id="tracked-detail" hidden></section><div id="overview">
     <div class="grid">{''.join(cards)}</div>{empty}{errorblock}
     <details><summary>Spravovat skryté dny a okna</summary><div id="restore-list"></div></details></div>
-    <footer><b>Bezpečnost:</b> Kandidátní okno je automatický screening, nikoli doporučení ke startu.
+    <footer><p><b>Metodika:</b> V hlavním přehledu jsou pouze okna, kde alespoň 3 ze 4 modelů splňují místní limity a žádný neukazuje výrazný exces. Navíc platí základní meteorologické filtry. Modely nejsou nezávislé a jejich shoda nezaručuje bezpečný let.</p><b>Bezpečnost:</b> Kandidátní okno je automatický screening, nikoli doporučení ke startu.
     Vždy ověř aktuální měření, výškový vítr, rotory, fronty a místní podmínky.
     Modelový vítr 10 m/80 m není měření na startovišti. Termika a XC nejsou spolehlivě vyhodnoceny.
     Volby se ukládají přes Cloudflare KV. Sledované detaily se aktualizují s webem.</footer></main>
@@ -167,7 +169,7 @@ def build():
     (()=>{{
       const API='https://paragliding-control.jmkozel.workers.dev/preferences';
       const cards=[...document.querySelectorAll('.window')];
-      const filters=[...document.querySelectorAll('.filter')];
+      const filters=[];
       const info=document.getElementById('hidden-info');
       let active='all',busy=false;
       let days={json.dumps(prefs["days"],ensure_ascii=False)};
@@ -179,11 +181,12 @@ def build():
         const entries=Object.entries(windows).filter(([k,v])=>v==="watch").sort();
         const button=(label,key)=>{{const b=document.createElement("button");b.textContent=label;b.classList.toggle("active",selected===key);b.onclick=()=>{{selected=key;renderTracked();}};nav.appendChild(b);}};
         button("Přehled","overview");
-        for(const [key] of entries){{const d=trackedData.find(x=>x.key===key);const [day,site]=key.split("|");button(day.slice(8)+"."+day.slice(5,7)+" "+site,key);}}
+        for(const [key] of entries){{const d=trackedData.find(x=>x.key===key);const [day,site]=key.split("|");button(day.slice(8)+"."+day.slice(5,7)+" "+site+(key.split("|")[2]?" "+key.split("|")[2]:"")+(d&&!d.items.length?" ❌":""),key);}}
         if(selected!=="overview"&&!entries.some(([k])=>k===selected))selected="overview";
         const show=selected!=="overview";document.getElementById("overview").hidden=show;panel.hidden=!show;
         if(!show)return;
         const d=trackedData.find(x=>x.key===selected),heading=document.createElement("h2");const [dateLabel,siteLabel]=selected.split("|");heading.className="tracked-heading";heading.textContent=siteLabel+" · "+dateLabel.slice(8)+"."+dateLabel.slice(5,7)+".";panel.appendChild(heading);
+        const stop=document.createElement("button");stop.textContent="Přestat sledovat";stop.style.marginBottom="12px";stop.onclick=()=>{{const [day,...parts]=selected.split("|");selected="overview";change(day,parts.join("|"),"clear");}};panel.appendChild(stop);
         if(!d||!d.items.length){{const p=document.createElement("p");p.textContent=d?"Aktuálně bez vhodného kandidátního okna. Sledování pokračuje. Níže jsou předpovídané hodnoty a důvody vyřazení.":"Pro tento den zatím nejsou k dispozici data z poslední aktualizace. Sledování zůstává aktivní.";panel.appendChild(p);}}
         else for(const w of d.items){{const box=document.createElement("article");box.className="window";box.style.padding="15px";const h=document.createElement("h3");h.textContent=w.start+"–"+w.end;box.appendChild(h);
           for(const [k,label,unit] of [["wind_speed_10m","Vítr"," m/s"],["wind_gusts_10m","Nárazy"," m/s"],["wind_direction_10m","Směr","°"],["wind_speed_80m","Vítr 80 m"," m/s"],["cloud_cover","Oblačnost"," %"],["precipitation_probability","Srážky"," %"]]){{const p=document.createElement("p");const a=w.m[k];p.textContent=label+": "+(a?a.map(x=>Number(x).toFixed(1)).join("–")+unit:"bez dat");box.appendChild(p);}}
@@ -224,25 +227,17 @@ def build():
             detail.appendChild(inner);panel.appendChild(detail);
           }}
         }}
-        const stop=document.createElement("button");stop.textContent="Přestat sledovat";stop.onclick=()=>{{const [day,site]=selected.split("|");selected="overview";change(day,site,"clear");}};panel.appendChild(stop);
+
       }}
       function render(){{
         filters.forEach(b=>b.classList.toggle('active',b.dataset.day===active));
         cards.forEach(card=>{{
           const k=card.dataset.key;
-          card.hidden=!!days[card.dataset.day]||windows[k]==='exclude'||(active!=='all'&&card.dataset.day!==active);
+          card.hidden=!!days[card.dataset.day]||windows[k]==='exclude'||windows[k.slice(0,k.lastIndexOf('|'))]==='exclude';
           const watch=card.querySelector('.watch');
           watch.textContent=windows[k]==='watch'?'★ Sledováno · zrušit':'☆ Sledovat';
           watch.setAttribute('aria-pressed',String(windows[k]==='watch'));
         }});
-        const area=document.getElementById('day-actions');
-        area.replaceChildren();
-        if(active!=='all'){{
-          const button=document.createElement('button');
-          button.textContent=days[active]?'Obnovit celý den':'Nemůžu celý den';
-          button.onclick=()=>change(active,'*',days[active]?'clear':'exclude');
-          area.appendChild(button);
-        }}
         const restore=document.getElementById('restore-list');
         restore.replaceChildren();
         for(const [day,value] of Object.entries(days)){{
@@ -261,7 +256,10 @@ def build():
           button.onclick=()=>change(k.slice(0,pos),k.slice(pos+1),'clear');
           restore.appendChild(button);
         }}
-        info.textContent=cards.filter(card=>days[card.dataset.day]||windows[card.dataset.key]==='exclude').length+' skrytých oken';
+        const hidden=cards.filter(card=>card.hidden).length;
+        const watched=Object.values(windows).filter(v=>v==='watch').length;
+        document.getElementById('compact-count').textContent=cards.length+' nalezených oken, z toho '+watched+' sledovaných a '+hidden+' skrytých';
+        info.textContent='';
         renderTracked();
       }}
       async function change(day,site,action){{
@@ -283,7 +281,7 @@ def build():
         card.querySelector('.watch').onclick=()=>change(day,site,windows[card.dataset.key]==='watch'?'clear':'watch');
         card.querySelector('.exclude').onclick=()=>change(day,site,'exclude');
       }});
-      filters.forEach(b=>b.onclick=()=>{{active=b.dataset.day;render();}});
+
       async function sync(){{
         try{{
           const response=await fetch(API,{{cache:'no-store'}});
