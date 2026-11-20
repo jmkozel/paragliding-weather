@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from preferences import load, excluded
+from pwa_assets import build as build_pwa_assets
 from logistics import departure
 from tracking_delivery import read_state, changes
 from urllib.parse import quote
@@ -125,6 +126,10 @@ def build():
     doc=f"""<!doctype html><html lang="cs"><head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Letová okna | Paragliding</title>
+    <meta name="theme-color" content="#193652">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/png" href="icon-192.png">
+    <link rel="apple-touch-icon" href="icon-192.png">
     <style>
     :root{{font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;color:#1e344a;background:#f2f6fa}}
     *{{box-sizing:border-box}}body{{margin:0}}header{{background:#193652;color:#fff;padding:22px max(18px,calc((100% - 950px)/2))}}
@@ -467,11 +472,13 @@ def build():
         }}catch(e){{info.textContent='Nepodařilo se načíst rozhodnutí: '+e.message;}}
       }}
       render();sync();
+      if("serviceWorker" in navigator){{navigator.serviceWorker.register("./sw.js").catch(err=>console.warn("PWA worker:",err));}}
     }})();
     </script></body></html>"""
     out=Path("public");out.mkdir(exist_ok=True)
     (out/"index.html").write_text(doc,encoding="utf-8")
     (out/".nojekyll").write_text("",encoding="utf-8")
+    build_pwa_assets()
     print(f"Generated {count} windows, {len(errors)} errors, public/index.html")
 
 if __name__=="__main__":build()
