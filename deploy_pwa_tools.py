@@ -17,7 +17,7 @@ out.mkdir(exist_ok=True)
 public_key=os.environ.get("VAPID_PUBLIC_KEY","").strip()
 if public_key:
     text=page.decode("utf-8")
-    pattern=r"const VAPID_KEY=(?:\\\"[^\\\"]*\\\"|'[^']*');"
+    pattern=r'const VAPID_KEY="[^"]*";'
     updated,count=re.subn(pattern,"const VAPID_KEY="+json.dumps(public_key)+";",text,count=1)
     if count!=1:
         raise RuntimeError("VAPID key placeholder not found in existing dashboard")
