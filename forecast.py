@@ -7,6 +7,7 @@ import smtplib
 import ssl
 import urllib.parse
 import urllib.request
+import urllib.error
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -40,16 +41,25 @@ HOURLY = [
 BAD_CODES = {45,48,51,53,55,56,57,61,63,65,66,67,71,73,75,77,
              80,81,82,85,86,95,96,99}
 
-def open_with_retry(request, timeout=35, attempts=3):
-    """Retry transient network errors; never fabricate weather data."""
-    last = None
+def open_with_retry(request, timeout=35, attempts=4):
+    """Respect upstream rate limiting with bounded backoff; never invent data."""
+    last=None
     for attempt in range(attempts):
         try:
-            return urllib.request.urlopen(request, timeout=timeout)
-        except (OSError, TimeoutError) as exc:
-            last = exc
-            if attempt + 1 < attempts:
-                time.sleep(2 ** attempt)
+            return urllib.request.urlopen(request,timeout=timeout)
+        except urllib.error.HTTPError as exc:
+            last=exc
+            if exc.code not in (429,500,502,503,504) or attempt+1>=attempts:
+                break
+            retry_after=exc.headers.get("Retry-After","")
+            wait=min(90,max(10,20*(attempt+1)))
+            if retry_after.isdigit():wait=min(90,max(wait,int(retry_after)))
+            print(f"Weather API HTTP {exc.code}; retry in {wait}s ({attempt+1}/{attempts})",flush=True)
+            time.sleep(wait)
+        except (OSError,TimeoutError) as exc:
+            last=exc
+            if attempt+1>=attempts:break
+            time.sleep(3*(attempt+1))
     raise RuntimeError(f"Weather API unavailable after {attempts} attempts: {last}") from last
 
 def fetch(lat, lon):
