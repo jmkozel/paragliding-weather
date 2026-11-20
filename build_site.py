@@ -103,6 +103,16 @@ def build():
             key=d.isoformat()+'|'+w['name']+'|'+w['start']
             base=next(x for x in tracked if x['key']==d.isoformat()+'|'+w['name'])
             tracked.append(dict(base,key=key,items=[dict(w,trend=changes(dict(exists=True,day=d.isoformat(),site=w['name'],start=w['start'],end=w['end'],m=w['m'],risks=w['notes'],logistics=w['logistics']),email_baselines.get(key,{}).get('snapshot')))],baseline=email_baselines.get(key,{}).get('snapshot')))
+    # Persist detail for disappeared start-time windows as well.
+    existing_keys={entry['key'] for entry in tracked}
+    for key,action in prefs['windows'].items():
+        if action!='watch' or key in existing_keys:continue
+        parts=key.split('|')
+        if len(parts)!=3:continue
+        day,site,start=parts
+        base=next((x for x in tracked if x['key']==day+'|'+site),None)
+        if base:
+            tracked.append(dict(base,key=key,items=[],baseline=email_baselines.get(key,{}).get('snapshot')))
     errorblock=('<section class="warning"><b>Chyby dat</b><p>'+ '<br>'.join(esc(x) for x in errors)+'</p></section>') if errors else ''
     empty='<p class="empty">V modelu nejsou nalezena kandidátní okna ≥ 60 minut. Neznamená to automaticky nelétatelné počasí.</p>' if not count else ''
     doc=f"""<!doctype html><html lang="cs"><head><meta charset="utf-8">
