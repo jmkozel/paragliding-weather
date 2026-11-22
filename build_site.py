@@ -218,8 +218,9 @@ def build():
     </style></head><body><header><div style="font-size:12px;letter-spacing:1px">🪂 PARAGLIDING</div>
     <h1>Letová okna</h1><p class="compact-count"><span id="compact-count"></span> · aktualizováno {now:%d.%m. %H:%M}</p></header>
     <main><p id="hidden-info" class="muted-note" role="status" aria-live="polite" style="display:none"></p><nav id="tracked-nav" aria-label="Sledovaná okna"></nav><section id="tracked-detail" hidden></section><div id="overview">
-    <section class="push-settings"><b>🔔 Mobilní notifikace</b><p id="push-status">Kontroluji dostupnost…</p><button id="push-enable" hidden>Zapnout notifikace</button><button id="push-disable" hidden>Vypnout notifikace</button></section><div class="grid">{''.join(cards)}</div>{empty}{errorblock}
+    <div class="grid">{''.join(cards)}</div>{empty}{errorblock}
     <details><summary>Spravovat skryté dny a okna</summary><div id="restore-list"></div></details></div>
+    <section class="push-settings"><b>🔔 Mobilní notifikace</b><p id="push-status">Kontroluji dostupnost…</p><button id="push-enable" hidden>Zapnout notifikace</button><button id="push-disable" hidden>Vypnout notifikace</button></section>
     <footer><p><b>Metodika:</b> V hlavním přehledu jsou pouze okna, kde alespoň 3 ze 4 modelů splňují místní limity a žádný neukazuje výrazný exces. Navíc platí základní meteorologické filtry. Modely nejsou nezávislé a jejich shoda nezaručuje bezpečný let.</p><b>Bezpečnost:</b> Kandidátní okno je automatický screening, nikoli doporučení ke startu.
     Vždy ověř aktuální měření, výškový vítr, rotory, fronty a místní podmínky.
     Modelový vítr 10 m/80 m není měření na startovišti. Termika a XC nejsou spolehlivě vyhodnoceny.
