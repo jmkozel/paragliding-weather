@@ -3,7 +3,6 @@ on:
   schedule:
     # Refresh website every three hours, plus 07:00 local daily.
     - cron: '17 */3 * * *'
-    - cron: '11,41 * * * *'
     - cron: '0 5,6 * * *'
   workflow_dispatch:
 permissions:
@@ -15,7 +14,6 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule != '11,41 * * * *' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -47,7 +45,7 @@ jobs:
           SMTP_APP_PASSWORD: ${{ secrets.SMTP_APP_PASSWORD }}
           REPORT_TO: jmkozel@gmail.com
         run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$(TZ=Europe/Prague date +%H)" = "07" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] || { [ "$(TZ=Europe/Prague date +%H)" = "07" ] && [ "$(date -u +%M)" = "00" ]; }; then
             python morning_delivery.py
           else
             echo "Website refreshed; no email outside 07:00 Prague."
@@ -69,6 +67,7 @@ jobs:
           fi
 
   tracking:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '17 */3 * * *' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
