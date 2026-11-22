@@ -89,8 +89,21 @@ def fetch_all_sites():
     }
     url="https://api.open-meteo.com/v1/forecast?"+urllib.parse.urlencode(args)
     req=urllib.request.Request(url,headers={"User-Agent":"paragliding-weather/1.0"})
-    with open_with_retry(req,timeout=35) as response:
-        payload=json.load(response)
+    try:
+        with open_with_retry(req,timeout=35) as response:
+            payload=json.load(response)
+    except RuntimeError as exc:
+        if "HTTP Error 400" not in str(exc):
+            raise
+        # Some selected weather models do not expose all convection variables.
+        # Preserve the operational report without inventing unavailable values.
+        fallback=[v for v in HOURLY if v not in (
+            "boundary_layer_height","convective_cloud_base","convective_cloud_top",
+            "updraft","shortwave_radiation")]
+        args["hourly"]=",".join(fallback)
+        fallback_url="https://api.open-meteo.com/v1/forecast?"+urllib.parse.urlencode(args)
+        with open_with_retry(urllib.request.Request(fallback_url,headers={"User-Agent":"paragliding-weather/1.0"}),timeout=35) as response:
+            payload=json.load(response)
     results=payload if isinstance(payload,list) else [payload]
     if len(results)!=len(locations):
         raise ValueError(f"Expected {len(locations)} locations, got {len(results)}")
