@@ -13,6 +13,55 @@ from tracking_delivery import read_state, changes
 from urllib.parse import quote
 from forecast import SITES, fetch_all_sites, fetch_model_comparison, consensus_windows, metrics, risk_notes, cz_day, display_range, screening, model_consensus
 
+def flight_lights(site, data, group, comparison):
+    """Conservative heuristic; not a forecast of thermals or XC."""
+    h=data["hourly"]
+    ids=[slot[2] for slot in group]
+    def vals(key):
+        return [h[key][i] for i in ids if key in h and h[key][i] is not None]
+    def avg(key):
+        v=vals(key)
+        return sum(v)/len(v) if v else None
+    wind=avg("wind_speed_10m")
+    gust=max(vals("wind_gusts_10m"),default=None)
+    upper=avg("wind_speed_80m")
+    cloud=avg("cloud_cover")
+    low=avg("cloud_cover_low")
+    rain=max(vals("precipitation_probability"),default=None)
+    minimum,maximum,limit=site[3:6]
+    agreeing=min((sum(r["pass"] for r in model_consensus(site,comparison,h["time"][i])[1]) for i in ids),default=0)
+    out={}
+    if wind is None or gust is None or upper is None:
+        slope=("red","Chybějí potřebná data o větru.")
+    elif gust>limit or wind>maximum or wind<minimum:
+        slope=("red","Vítr nebo nárazy jsou mimo limity svahu.")
+    elif gust>=limit-1 or wind>=maximum-1 or upper>=10 or agreeing<4:
+        slope=("orange",f"Vítr splňuje filtry, ale rezerva nebo shoda modelů je omezená ({agreeing}/4).")
+    elif wind<=minimum+1:
+        slope=("light",f"Vítr {wind:.1f} m/s je blízko spodní hranice svahování.")
+    else:
+        slope=("dark",f"Vítr {wind:.1f} m/s, nárazy do {gust:.1f} m/s a shoda {agreeing}/4 modelů dávají rezervu vůči limitům. Lokální turbulence nejsou posouzeny.")
+    out["slope"]={"level":slope[0],"reason":slope[1]}
+    if cloud is None or low is None or rain is None:
+        thermal=("orange","Chybějí data pro odhad slunečního ohřevu.")
+    elif rain>=60 or low>=90 or cloud>=95:
+        thermal=("red","Vysoká pravděpodobnost srážek nebo téměř úplné zastínění omezuje termiku.")
+    elif cloud>=75 or low>=65 or rain>=40:
+        thermal=("orange",f"Oblačnost {cloud:.0f} %, nízká {low:.0f} %, srážky až {rain:.0f} %: nejistý sluneční ohřev.")
+    elif cloud>=45 or low>=35:
+        thermal=("light",f"Částečné zastínění ({cloud:.0f} %) může umožnit slabší termiku; stoupání a základny neznáme.")
+    else:
+        thermal=("light",f"Menší oblačnost ({cloud:.0f} %) umožňuje ohřev, ale sílu termiky z těchto dat neznáme.")
+    out["thermal"]={"level":thermal[0],"reason":thermal[1]}
+    if thermal[0]=="red":
+        xc=("red","Nevhodný předpoklad pro termiku; chybí navíc výškový profil a základny.")
+    elif thermal[0]=="orange" or (upper is not None and upper>=9):
+        xc=("orange","Nejistý sluneční ohřev nebo silnější vítr v 80 m; chybí výška základny, stoupání a výškový profil.")
+    else:
+        xc=("orange","Možný termický potenciál, ale bez stoupání, základny a výškového větru nelze XC potvrdit.")
+    out["xc"]={"level":xc[0],"reason":xc[1]}
+    return out
+
 def build():
     now=datetime.now(ZoneInfo("Europe/Prague"))
     prefs=load()
@@ -28,6 +77,7 @@ def build():
                     "name":name,"start":group[0][0].strftime("%H:%M"),
                     "end":group[-1][1].strftime("%H:%M"),
                     "m":metrics(cache[key],group),"notes":risk_notes(cache[key],group),
+                    "lights":flight_lights(site,cache[key],group,comparison[key]),
                     "models":[{"model":name,"wind":min(r["wind"] for r in [consensus[i][1][j] for i in [part[2] for part in group]]),
                                "gust":max(r["gust"] for r in [consensus[i][1][j] for i in [part[2] for part in group]])}
                               for j,name in enumerate(comparison[key])],
@@ -50,6 +100,8 @@ def build():
             window_key=f'{day.isoformat()}|{item["name"]}|{item["start"]}'
             is_excluded=excluded(prefs,day.isoformat(),item["name"]) or prefs["windows"].get(window_key)=="exclude"
             is_watched=prefs["windows"].get(window_key)=="watch"
+            lights=item["lights"]
+            lights_html="<div class='flight-lights' aria-label='Orientační hodnocení létání'>"+ "".join(f"<span title='{esc(lights[k]['reason'],quote=True)}'><i class='signal {lights[k]['level']}'></i>{label}</span>" for k,label in (("slope","Svahování"),("thermal","Termika"),("xc","XC")))+"</div>"
             notes=item["notes"]
             model_table="<div class='risks muted'><b>Modely: vítr / max. náraz (m/s)</b><br>"+ "<br>".join(f"{esc(row['model'])}: {row['wind']:.1f} / {row['gust']:.1f}" for row in item["models"])+"</div>"
             risk_html=("<div class='risks'><b>Na co dát pozor:</b> "+ "; ".join(esc(x) for x in notes)+"</div>") if notes else "<div class='risks muted'>Bez dodatečných varovných signálů v těchto dílčích ukazatelích. Nejde o potvrzení bezpečnosti.</div>"
@@ -58,6 +110,7 @@ def build():
               <strong class="time">{item["start"]}–{item["end"]}</strong></div>
               <div class="numbers"><div><small>Vítr · odkud {metric("wind_direction_10m","°",0)}</small><b>{metric("wind_speed_10m"," m/s")}</b></div>
               <div><small>Nárazy</small><b>{metric("wind_gusts_10m"," m/s")}</b></div></div>
+              {lights_html}
               <div class="choices"><button type="button" class="watch">☆ Sledovat</button><button type="button" class="exclude">Nemůžu</button><button type="button" class="exclude-day" title="Skrýt všechna letová okna v tento den, včetně nově přidaných">Nemůžu celý den</button></div>
               <details><summary>Podrobnosti a kontrola před letem</summary>
               <div class="detail">Vítr 80 m: <b>{metric("wind_speed_80m"," m/s")}</b><br>
@@ -149,6 +202,12 @@ def build():
     .detail{{line-height:1.9;padding:10px 0}}a{{color:#175c90}}.warning{{background:#fff0e7;padding:13px;border-radius:8px;margin:14px 0}}
     footer{{color:#60758a;font-size:12px;line-height:1.6;margin-top:22px;padding:15px 0;border-top:1px solid #d9e3ed}}
     .empty{{background:#fff;padding:20px;border-radius:9px}}
+    .flight-lights{{display:flex;flex-wrap:wrap;gap:12px;padding:0 14px 12px;font-size:12px;color:#36536a}}
+    .flight-lights span{{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}}
+    .signal{{display:inline-block;flex:none;width:11px;height:11px;border-radius:50%;border:1px solid #0002;vertical-align:middle}}
+    .signal.dark{{background:#177245}}.signal.light{{background:#91d9a0}}.signal.orange{{background:#ed9c35}}.signal.red{{background:#c53e3e}}
+    .light-reasons{{padding:10px 16px;font-size:12px;color:#536b7e;line-height:1.55;border-bottom:1px solid #e5edf3}}
+    .light-reasons p{{margin:5px 0}}
     .choices{{display:flex;gap:8px;padding:0 14px 11px}}
     .choices button{{font-size:12px;border:1px solid #b8cbda;padding:8px 12px;border-radius:7px}}
     .choices button[aria-pressed="true"]{{background:#204d70;color:white}}
@@ -225,7 +284,7 @@ def build():
     <footer><p><b>Metodika:</b> V hlavním přehledu jsou pouze okna, kde alespoň 3 ze 4 modelů splňují místní limity a žádný neukazuje výrazný exces. Navíc platí základní meteorologické filtry. Modely nejsou nezávislé a jejich shoda nezaručuje bezpečný let.</p><b>Bezpečnost:</b> Kandidátní okno je automatický screening, nikoli doporučení ke startu.
     Vždy ověř aktuální měření, výškový vítr, rotory, fronty a místní podmínky.
     Modelový vítr 10 m/80 m není měření na startovišti. Termika a XC nejsou spolehlivě vyhodnoceny.
-    Volby se ukládají přes Cloudflare KV. Sledované detaily se aktualizují s webem.</footer></main>
+    Semafory jsou orientační heuristika. Termika a XC nedostávají tmavě zelenou bez předpovědi stoupání, základen a výškového větru.\n    Volby se ukládají přes Cloudflare KV. Sledované detaily se aktualizují s webem.</footer></main>
     <script>
     (()=>{{
       const API='https://paragliding-control.jmkozel.workers.dev/preferences';
@@ -318,13 +377,22 @@ def build():
           const top=document.createElement("div");top.className="report-top";
           const left=document.createElement("div");left.innerHTML="<span class='eyebrow'>PŘEDPOVÍDANÉ LETOVÉ OKNO</span>";
           const time=document.createElement("div");time.className="report-time";time.textContent=w.start+"–"+w.end;left.appendChild(time);
-          const type=document.createElement("span");type.className="flight-type";type.textContent="Svahové létání · podmíněně";left.appendChild(type);
-          const typeNote=document.createElement("p");typeNote.className="report-note";typeNote.textContent="Směr a síla větru odpovídají filtrům pro daný svah. Termika a XC nejsou spolehlivě vyhodnoceny.";left.appendChild(typeNote);top.appendChild(left);
+          const typeNote=document.createElement("p");typeNote.className="report-note";typeNote.textContent="Orientační semafor podle modelových dat, nikoli potvrzení bezpečnosti.";left.appendChild(typeNote);top.appendChild(left);
           const depart=document.createElement("div");depart.className="depart-box";
           const cap=document.createElement("small");cap.textContent="ODJEZD Z ČERNOŠIC";depart.appendChild(cap);
           const big=document.createElement("strong");big.textContent=w.logistics.departure;depart.appendChild(big);
           const route=document.createElement("span");route.className="depart-route";
           route.textContent=w.logistics.drive_min+" min autem · příjezd "+w.logistics.arrival+" · "+w.logistics.prepare_min+" min přesun a příprava · start "+w.start;depart.appendChild(route);top.appendChild(depart);box.appendChild(top);
+          const lightRow=document.createElement("div");lightRow.className="flight-lights";lightRow.style.padding="12px 16px 4px";
+          const explanations=document.createElement("div");explanations.className="light-reasons";
+          for(const [key,label] of [["slope","Svahování"],["thermal","Termika"],["xc","XC"]]){{
+            const entry=w.lights?.[key];if(!entry)continue;
+            const tag=document.createElement("span"),dot=document.createElement("i");
+            dot.className="signal "+entry.level;tag.appendChild(dot);tag.appendChild(document.createTextNode(label));lightRow.appendChild(tag);
+            const p=document.createElement("p"),strong=document.createElement("strong");
+            strong.textContent=label+": ";p.appendChild(strong);p.appendChild(document.createTextNode(entry.reason));explanations.appendChild(p);
+          }}
+          box.appendChild(lightRow);box.appendChild(explanations);
           const metrics=document.createElement("div");metrics.className="report-metrics";
           for(const [label,key,unit] of [["Vítr 10 m","wind_speed_10m"," m/s"],["Nárazy","wind_gusts_10m"," m/s"],["Směr větru","wind_direction_10m","°"],["Vítr 80 m","wind_speed_80m"," m/s"],["Oblačnost","cloud_cover"," %"],["Nízká oblačnost","cloud_cover_low"," %"],["Pravd. srážek","precipitation_probability"," %"]]){{
             const cell=document.createElement("div");cell.className="metric-cell";
