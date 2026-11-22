@@ -37,6 +37,8 @@ HOURLY = [
  "wind_speed_80m","wind_direction_80m","precipitation",
  "precipitation_probability","visibility","weather_code",
  "cloud_cover","cloud_cover_low","cape",
+ "boundary_layer_height","convective_cloud_base","convective_cloud_top","updraft",
+ "shortwave_radiation",
 ]
 BAD_CODES = {45,48,51,53,55,56,57,61,63,65,66,67,71,73,75,77,
              80,81,82,85,86,95,96,99}
