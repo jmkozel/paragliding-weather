@@ -58,7 +58,7 @@ def build():
               <strong class="time">{item["start"]}–{item["end"]}</strong></div>
               <div class="numbers"><div><small>Vítr · odkud {metric("wind_direction_10m","°",0)}</small><b>{metric("wind_speed_10m"," m/s")}</b></div>
               <div><small>Nárazy</small><b>{metric("wind_gusts_10m"," m/s")}</b></div></div>
-              <div class="choices"><button type="button" class="watch">☆ Sledovat</button><button type="button" class="exclude">Nemůžu</button></div>
+              <div class="choices"><button type="button" class="watch">☆ Sledovat</button><button type="button" class="exclude">Nemůžu</button><button type="button" class="exclude-day" title="Skrýt všechna letová okna v tento den, včetně nově přidaných">Nemůžu celý den</button></div>
               <details><summary>Podrobnosti a kontrola před letem</summary>
               <div class="detail">Vítr 80 m: <b>{metric("wind_speed_80m"," m/s")}</b><br>
               Oblačnost: <b>{metric("cloud_cover"," %",0)}</b> · nízká: {metric("cloud_cover_low"," %",0)}<br>
@@ -152,6 +152,7 @@ def build():
     .choices{{display:flex;gap:8px;padding:0 14px 11px}}
     .choices button{{font-size:12px;border:1px solid #b8cbda;padding:8px 12px;border-radius:7px}}
     .choices button[aria-pressed="true"]{{background:#204d70;color:white}}
+    .choices{{flex-wrap:wrap}}.choices .exclude-day{{border-color:#d0b8a5;color:#77543b}}
     .risks{{margin:8px 0;padding:9px;background:#fff4e9;border-radius:6px;color:#684a30}}
     .risks.muted{{background:#f0f4f7;color:#526779}}
     .push-settings{{background:white;border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px}}
@@ -456,6 +457,7 @@ def build():
         const day=card.dataset.key.slice(0,pos),site=card.dataset.key.slice(pos+1);
         card.querySelector('.watch').onclick=()=>change(day,site,windows[card.dataset.key]==='watch'?'clear':'watch');
         card.querySelector('.exclude').onclick=()=>change(day,site,'exclude');
+        card.querySelector('.exclude-day').onclick=()=>change(day,'*','exclude');
       }});
 
       async function sync(){{
