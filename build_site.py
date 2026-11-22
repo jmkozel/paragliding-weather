@@ -42,23 +42,49 @@ def flight_lights(site, data, group, comparison):
     else:
         slope=("dark",f"Vítr {wind:.1f} m/s, nárazy do {gust:.1f} m/s a shoda {agreeing}/4 modelů dávají rezervu vůči limitům. Lokální turbulence nejsou posouzeny.")
     out["slope"]={"level":slope[0],"reason":slope[1]}
+    # Model-provided convection diagnostics, if available. Heights are metres ASL,
+    # updraft is model grid-cell diagnostic, not actual paraglider climb rate.
+    terrain=data.get("elevation")
+    bl=avg("boundary_layer_height")
+    base=avg("convective_cloud_base")
+    top=avg("convective_cloud_top")
+    up=avg("updraft")
+    radiation=avg("shortwave_radiation")
+    # Open-Meteo boundary layer height is AGL; cloud base is ASL.
+    usable=(base-terrain) if base is not None and terrain is not None else None
     if cloud is None or low is None or rain is None:
-        thermal=("orange","Chybějí data pro odhad slunečního ohřevu.")
+        thermal=("orange","Chybějí údaje o oblačnosti nebo srážkách.")
     elif rain>=60 or low>=90 or cloud>=95:
-        thermal=("red","Vysoká pravděpodobnost srážek nebo téměř úplné zastínění omezuje termiku.")
-    elif cloud>=75 or low>=65 or rain>=40:
-        thermal=("orange",f"Oblačnost {cloud:.0f} %, nízká {low:.0f} %, srážky až {rain:.0f} %: nejistý sluneční ohřev.")
-    elif cloud>=45 or low>=35:
-        thermal=("light",f"Částečné zastínění ({cloud:.0f} %) může umožnit slabší termiku; stoupání a základny neznáme.")
+        thermal=("red","Vysoké riziko srážek nebo téměř úplné zastínění.")
+    elif bl is not None and bl<350:
+        thermal=("red",f"Modelová výška promíchané vrstvy jen {bl:.0f} m nad terénem.")
+    elif radiation is not None and radiation<100:
+        thermal=("red",f"Sluneční záření jen {radiation:.0f} W/m²; slabý ohřev povrchu.")
+    elif rain>=40 or low>=65 or cloud>=80:
+        thermal=("orange","Nejistý ohřev kvůli oblačnosti nebo riziku srážek.")
+    elif bl is not None and bl>=1200 and (radiation is None or radiation>=350) and (up is None or up>=0.5):
+        thermal=("dark",f"Promíchaná vrstva {bl:.0f} m AGL"+(f", modelový výstup updraft {up:.1f} m/s" if up is not None else "")+"; příznivý termický potenciál, nikoli garantované stoupáky.")
+    elif bl is not None and bl>=650 and (radiation is None or radiation>=200):
+        thermal=("light",f"Promíchaná vrstva {bl:.0f} m AGL, potenciál slabší až střední termiky.")
+    elif bl is not None:
+        thermal=("orange",f"Promíchaná vrstva {bl:.0f} m AGL; termický potenciál nejistý.")
     else:
-        thermal=("light",f"Menší oblačnost ({cloud:.0f} %) umožňuje ohřev, ale sílu termiky z těchto dat neznáme.")
+        thermal=("orange","Model neposkytl výšku konvekční vrstvy; nelze spolehlivě určit dostup.")
+    if usable is not None:
+        thermal=(thermal[0],thermal[1]+f" Základna konvekční oblačnosti přibližně {base:.0f} m n. m. ({usable:.0f} m nad modelovým terénem).")
+    elif base is None:
+        thermal=(thermal[0],thermal[1]+" Základna kumulů není v datech dostupná; suchá termika je možná.")
     out["thermal"]={"level":thermal[0],"reason":thermal[1]}
     if thermal[0]=="red":
-        xc=("red","Nevhodný předpoklad pro termiku; chybí navíc výškový profil a základny.")
-    elif thermal[0]=="orange" or (upper is not None and upper>=9):
-        xc=("orange","Nejistý sluneční ohřev nebo silnější vítr v 80 m; chybí výška základny, stoupání a výškový profil.")
+        xc=("red","Termické podmínky podle modelu nepříznivé.")
+    elif bl is None:
+        xc=("orange","Chybí modelový dostup, nelze hodnotit potenciál přeletu.")
+    elif thermal[0]=="dark" and bl>=1400 and upper is not None and upper<7 and (usable is None or usable>=900):
+        xc=("light",f"Promíchaná vrstva {bl:.0f} m AGL, vítr 80 m {upper:.1f} m/s. Potenciál pro kratší přelet; výškový vítr a stoupáky ověř zvlášť.")
+    elif bl<500:
+        xc=("red",f"Modelová promíchaná vrstva pouze {bl:.0f} m nad terénem.")
     else:
-        xc=("orange","Možný termický potenciál, ale bez stoupání, základny a výškového větru nelze XC potvrdit.")
+        xc=("orange",f"Promíchaná vrstva {bl:.0f} m AGL, ale přelety limituje nejistota stoupání, základen a větru ve výšce.")
     out["xc"]={"level":xc[0],"reason":xc[1]}
     return out
 
@@ -284,7 +310,7 @@ def build():
     <footer><p><b>Metodika:</b> V hlavním přehledu jsou pouze okna, kde alespoň 3 ze 4 modelů splňují místní limity a žádný neukazuje výrazný exces. Navíc platí základní meteorologické filtry. Modely nejsou nezávislé a jejich shoda nezaručuje bezpečný let.</p><b>Bezpečnost:</b> Kandidátní okno je automatický screening, nikoli doporučení ke startu.
     Vždy ověř aktuální měření, výškový vítr, rotory, fronty a místní podmínky.
     Modelový vítr 10 m/80 m není měření na startovišti. Termika a XC nejsou spolehlivě vyhodnoceny.
-    Semafory jsou orientační heuristika. Termika a XC nedostávají tmavě zelenou bez předpovědi stoupání, základen a výškového větru.\n    Volby se ukládají přes Cloudflare KV. Sledované detaily se aktualizují s webem.</footer></main>
+    Semafory jsou orientační heuristika. Modelová výška promíchané vrstvy není garantovaný dostup a updraft není skutečné stoupání padáku.\n    Volby se ukládají přes Cloudflare KV. Sledované detaily se aktualizují s webem.</footer></main>
     <script>
     (()=>{{
       const API='https://paragliding-control.jmkozel.workers.dev/preferences';
