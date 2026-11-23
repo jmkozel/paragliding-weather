@@ -34,8 +34,15 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: public
+      - name: Wait for Pages artifact to become available
+        run: |
+          echo "Waiting for GitHub artifact indexing before Pages deployment"
+          sleep 20
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          error_count: 5
+          reporting_interval: 10000
       - name: Send morning email only
         if: ${{ always() && !cancelled() }}
         env:
