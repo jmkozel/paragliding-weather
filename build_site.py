@@ -334,9 +334,9 @@ def build():
           if(!response.ok)throw Error("GitHub API HTTP "+response.status);
           const payload=await response.json();
           const runs=(payload.workflow_runs||[]).filter(r=>r.status==="completed");
-          const latest=runs[0],successful=runs.find(r=>r.conclusion==="success");
+          const latest=runs[0];
           const fmt=t=>new Date(t).toLocaleString("cs-CZ",{{dateStyle:"short",timeStyle:"short"}});
-          summary.textContent="Poslední běh: "+(latest?fmt(latest.created_at)+" · "+(latest.conclusion==="success"?"úspěšný":"neúspěšný"):"bez záznamu")+". Poslední zcela úspěšný běh: "+(successful?fmt(successful.created_at):"nenalezen v posledních 40 bězích")+".";
+          summary.textContent="Poslední běh: "+(latest?fmt(latest.created_at)+" · "+(latest.conclusion==="success"?"úspěšný":"neúspěšný"):"bez záznamu")+".";
           const failures=runs.filter(r=>r.conclusion!=="success").slice(0,20);
           history.replaceChildren();
           if(!failures.length){{history.textContent="V posledních načtených bězích nejsou chyby.";return;}}
