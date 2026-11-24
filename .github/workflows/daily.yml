@@ -52,10 +52,10 @@ jobs:
           SMTP_APP_PASSWORD: ${{ secrets.SMTP_APP_PASSWORD }}
           REPORT_TO: jmkozel@gmail.com
         run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ] || { [ "$(TZ=Europe/Prague date +%H)" = "07" ] && [ "$(date -u +%M)" = "00" ]; }; then
+          if [ "$EVENT_NAME" = "schedule" ] && [ "$(TZ=Europe/Prague date +%H)" = "07" ]; then
             python morning_delivery.py
           else
-            echo "Website refreshed; no email outside 07:00 Prague."
+            echo "Website refreshed; no morning report email for manual or non-morning runs."
           fi
 
       - name: Install morning Web Push library
