@@ -245,11 +245,6 @@ def build():
     .tech-status a{{display:inline-block;margin:4px 0}}
     .tech-entry{{padding:8px 0;border-top:1px solid #e6edf2}}
     .tech-entry small{{color:#61758a}}
-    .technical-status{{background:#fff;border:1px solid #dce5ec;border-radius:10px;padding:13px 15px;margin:12px 0 18px;font-size:13px}}
-    .technical-status summary{{cursor:pointer;font-weight:650}}
-    .technical-status p{{color:#5b7081}}
-    .technical-status li{{margin:7px 0}}
-    .tech-warning{{background:#fff1e9;border:1px solid #db8d64;padding:10px 14px;border-radius:9px;margin:10px 0;font-size:13px;color:#8a4228}}
     .push-settings{{background:white;border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px}}
     .push-settings p{{color:#61758a}}
     .tracked-report{{background:#fff;border:1px solid #d9e4ee;border-radius:13px;overflow:hidden;margin:12px 0 20px;box-shadow:0 2px 6px #dce5ee66}}
@@ -318,12 +313,7 @@ def build():
     <details><summary>Spravovat skryté dny a okna</summary><div id="restore-list"></div></details></div>
     <section class="push-settings"><b>🔔 Mobilní notifikace</b><p id="push-status">Kontroluji dostupnost…</p><button id="push-enable" hidden>Zapnout notifikace</button><button id="push-disable" hidden>Vypnout notifikace</button></section>
     <details class="tech-status"><summary>🛠 Technický stav aplikace</summary><p id="tech-summary">Načítám historii aktualizací…</p><div id="tech-history"></div><p class="muted-note">Historie je načítaná z veřejných běhů GitHub Actions. Podrobnosti chyby otevřeš přímo na GitHubu.</p></details>
-    <details class="technical-status" id="technical-status"><summary>🛠️ Technický stav aplikace <span id="tech-badge">· načítám</span></summary>
-      <p id="tech-current">Kontroluji poslední běhy aktualizace…</p>
-      <p id="tech-updated">Poslední sestavení webu: {now:%d.%m.%Y %H:%M}</p>
-      <div id="tech-history"></div>
-      <p class="muted-note">Historie pochází přímo z GitHub Actions. Podrobnosti chyby otevře odkaz na příslušný běh. GitHub může historii omezit nebo dočasně nezpřístupnit.</p>
-    </details>
+
     <footer><p><b>Metodika:</b> V hlavním přehledu jsou pouze okna, kde alespoň 3 ze 4 modelů splňují místní limity a žádný neukazuje výrazný exces. Navíc platí základní meteorologické filtry. Modely nejsou nezávislé a jejich shoda nezaručuje bezpečný let.</p><b>Bezpečnost:</b> Kandidátní okno je automatický screening, nikoli doporučení ke startu.
     Vždy ověř aktuální měření, výškový vítr, rotory, fronty a místní podmínky.
     Modelový vítr 10 m/80 m není měření na startovišti. Termika a XC nejsou spolehlivě vyhodnoceny.
@@ -652,58 +642,6 @@ def build():
         }}catch(e){{status.textContent='Odhlášení selhalo: '+e.message;}}
         finally{{disable.disabled=false;}}
       }};
-      // GitHub's public Actions API is the durable error history; no secrets in the dashboard.
-      async function loadTechnicalStatus(){{
-        const badge=document.getElementById('tech-badge'),current=document.getElementById('tech-current');
-        const history=document.getElementById('tech-history');
-        const endpoint='https://api.github.com/repos/jmkozel/paragliding-weather/actions/workflows/daily.yml/runs?per_page=60';
-        try{{
-          const response=await fetch(endpoint,{{headers:{{Accept:'application/vnd.github+json'}},cache:'no-store'}});
-          if(!response.ok)throw Error('GitHub API HTTP '+response.status);
-          const payload=await response.json();
-          const runs=(payload.workflow_runs||[]).filter(r=>r.status==='completed');
-          const last=runs[0];
-          const successful=runs.find(r=>r.conclusion==='success');
-          if(last){{
-            const stamp=new Date(last.updated_at);
-            const time=stamp.toLocaleString('cs-CZ',{{dateStyle:'short',timeStyle:'short'}});
-            current.textContent='Poslední běh: '+time+' · '+(last.conclusion==='success'?'úspěšný':'neúspěšný');
-            badge.textContent=last.conclusion==='success'?'· v pořádku':'· poslední běh selhal';
-          }}else{{current.textContent='Zatím nejsou dostupné dokončené běhy.';badge.textContent='· bez dat';}}
-          const failed=runs.filter(r=>r.conclusion==='failure').slice(0,20);
-          history.replaceChildren();
-          const heading=document.createElement('p');
-          heading.textContent='Posledních '+failed.length+' neúspěšných běhů (z posledních '+runs.length+' dokončených):';
-          history.appendChild(heading);
-          if(!failed.length){{const p=document.createElement('p');p.textContent='Žádné chyby v dostupné historii.';history.appendChild(p);}}
-          const list=document.createElement('ul');
-          for(const run of failed){{
-            const li=document.createElement('li'),a=document.createElement('a');
-            a.href=run.html_url;a.target='_blank';a.rel='noopener noreferrer';
-            a.textContent=new Date(run.created_at).toLocaleString('cs-CZ',{{dateStyle:'short',timeStyle:'short'}})+' · zobrazit příčinu';
-            li.appendChild(a);list.appendChild(li);
-          }}
-          history.appendChild(list);
-          if(successful){{
-            const p=document.createElement('p');
-            p.textContent='Poslední kompletně úspěšný běh: '+new Date(successful.updated_at).toLocaleString('cs-CZ',{{dateStyle:'short',timeStyle:'short'}});
-            history.prepend(p);
-          }}
-        }}catch(e){{
-          badge.textContent='· nelze ověřit';
-          current.textContent='Historii nelze načíst: '+e.message+'. Předpověď může být stále dostupná.';
-        }}
-      }}
-      const builtAt={json.dumps(now.isoformat())};
-      function checkForecastAge(){{
-        const hours=(Date.now()-new Date(builtAt).getTime())/3600000;
-        if(hours<=12)return;
-        const warning=document.createElement('div');warning.className='tech-warning';
-        warning.textContent='⚠️ Předpověď je starší než 12 hodin ('+Math.floor(hours)+' h). Před letem ověř aktuální data.';
-        document.querySelector('main').prepend(warning);
-      }}
-      checkForecastAge();
-      loadTechnicalStatus();
       render();sync();
       if("serviceWorker" in navigator){{navigator.serviceWorker.register("./sw.js").then(refreshPush).catch(err=>console.warn("PWA worker:",err));}}
     }})();
