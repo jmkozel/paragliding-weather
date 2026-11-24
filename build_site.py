@@ -128,6 +128,8 @@ def build():
             is_watched=prefs["windows"].get(window_key)=="watch"
             lights=item["lights"]
             lights_html="<div class='flight-lights' aria-label='Orientační hodnocení létání'>"+ "".join(f"<span title='{esc(lights[k]['reason'],quote=True)}'><i class='signal {lights[k]['level']}'></i>{label}</span>" for k,label in (("slope","Svahování"),("thermal","Termika"),("xc","XC")))+"</div>"
+            launch_directions=next(site[6] for site in SITES if site[0]==item["name"])
+            launch_range=" / ".join(f"{start}–{end}°" for start,end in launch_directions)
             notes=item["notes"]
             model_table="<div class='risks muted'><b>Modely: vítr / max. náraz (m/s)</b><br>"+ "<br>".join(f"{esc(row['model'])}: {row['wind']:.1f} / {row['gust']:.1f}" for row in item["models"])+"</div>"
             risk_html=("<div class='risks'><b>Na co dát pozor:</b> "+ "; ".join(esc(x) for x in notes)+"</div>") if notes else "<div class='risks muted'>Bez dodatečných varovných signálů v těchto dílčích ukazatelích. Nejde o potvrzení bezpečnosti.</div>"
@@ -138,7 +140,8 @@ def build():
               <div><small>Nárazy</small><b>{metric("wind_gusts_10m"," m/s")}</b></div></div>
               {lights_html}
               <div class="choices"><button type="button" class="watch">☆ Sledovat</button><button type="button" class="exclude">Nemůžu</button><button type="button" class="exclude-day" title="Skrýt všechna letová okna v tento den, včetně nově přidaných">Nemůžu celý den</button></div>
-              <details><summary>Podrobnosti a kontrola před letem</summary>
+              <details><summary>Podrobnosti</summary>
+              <div class="numbers detail-directions"><div><small>Předpovídaný směr</small><b>{metric("wind_direction_10m","°",0)}</b></div><div><small>Rozsah startovačky</small><b>{esc(launch_range)}</b></div></div>
               <div class="detail">Vítr 80 m: <b>{metric("wind_speed_80m"," m/s")}</b><br>
               Oblačnost: <b>{metric("cloud_cover"," %",0)}</b> · nízká: {metric("cloud_cover_low"," %",0)}<br>
               Pravděpodobnost srážek: <b>{metric("precipitation_probability"," %",0)}</b></div>
@@ -240,7 +243,7 @@ def build():
     .choices{{flex-wrap:wrap}}.choices .exclude-day{{border-color:#d0b8a5;color:#77543b}}
     .risks{{margin:8px 0;padding:9px;background:#fff4e9;border-radius:6px;color:#684a30}}
     .risks.muted{{background:#f0f4f7;color:#526779}}
-    .tech-status{{background:white;border-radius:10px;margin:14px 0;padding:14px;font-size:13px}}
+    .detail-directions{{margin:9px 12px;border-radius:8px;background:#f2f6f9}}\n    .tech-status{{background:white;border-radius:10px;margin:14px 0;padding:14px;font-size:13px}}
     .tech-status p{{line-height:1.5}}
     .tech-table{{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px}}
     .tech-table th,.tech-table td{{padding:9px 5px;text-align:left;border-bottom:1px solid #e6edf2;white-space:nowrap}}
