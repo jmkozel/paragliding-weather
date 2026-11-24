@@ -43,21 +43,6 @@ jobs:
         with:
           error_count: 5
           reporting_interval: 10000
-      - name: Send morning email only
-        if: ${{ always() && !cancelled() }}
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          GITHUB_TOKEN: ${{ github.token }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_APP_PASSWORD: ${{ secrets.SMTP_APP_PASSWORD }}
-          REPORT_TO: jmkozel@gmail.com
-        run: |
-          if [ "$EVENT_NAME" = "schedule" ] && [ "$(TZ=Europe/Prague date +%H)" = "07" ]; then
-            python morning_delivery.py
-          else
-            echo "Website refreshed; no morning report email for manual or non-morning runs."
-          fi
-
       - name: Install morning Web Push library
         if: ${{ success() }}
         run: python -m pip install "pywebpush>=2.0,<3"
