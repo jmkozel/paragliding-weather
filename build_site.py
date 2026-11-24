@@ -240,6 +240,11 @@ def build():
     .choices{{flex-wrap:wrap}}.choices .exclude-day{{border-color:#d0b8a5;color:#77543b}}
     .risks{{margin:8px 0;padding:9px;background:#fff4e9;border-radius:6px;color:#684a30}}
     .risks.muted{{background:#f0f4f7;color:#526779}}
+    .tech-status{{background:white;border-radius:10px;margin:14px 0;padding:14px;font-size:13px}}
+    .tech-status p{{line-height:1.5}}
+    .tech-status a{{display:inline-block;margin:4px 0}}
+    .tech-entry{{padding:8px 0;border-top:1px solid #e6edf2}}
+    .tech-entry small{{color:#61758a}}
     .push-settings{{background:white;border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px}}
     .push-settings p{{color:#61758a}}
     .tracked-report{{background:#fff;border:1px solid #d9e4ee;border-radius:13px;overflow:hidden;margin:12px 0 20px;box-shadow:0 2px 6px #dce5ee66}}
@@ -303,16 +308,46 @@ def build():
     .muted-note{{font-size:12px;color:#63758a;line-height:1.5;margin:10px 0}}
     </style></head><body><header><div style="font-size:12px;letter-spacing:1px">🪂 PARAGLIDING</div>
     <h1>Letová okna</h1><p class="compact-count"><span id="compact-count"></span> · aktualizováno {now:%d.%m. %H:%M}</p></header>
-    <main><p id="hidden-info" class="muted-note" role="status" aria-live="polite" style="display:none"></p><nav id="tracked-nav" aria-label="Sledovaná okna"></nav><section id="tracked-detail" hidden></section><div id="overview">
+    <main><div id="stale-warning" class="warning" hidden><b>⚠️ Předpověď může být zastaralá.</b> Poslední úspěšné sestavení webu je starší než 12 hodin. Před letem ověř aktuální data přímo u meteorologických služeb.</div><p id="hidden-info" class="muted-note" role="status" aria-live="polite" style="display:none"></p><nav id="tracked-nav" aria-label="Sledovaná okna"></nav><section id="tracked-detail" hidden></section><div id="overview">
     <div class="grid">{''.join(cards)}</div>{empty}{errorblock}
     <details><summary>Spravovat skryté dny a okna</summary><div id="restore-list"></div></details></div>
     <section class="push-settings"><b>🔔 Mobilní notifikace</b><p id="push-status">Kontroluji dostupnost…</p><button id="push-enable" hidden>Zapnout notifikace</button><button id="push-disable" hidden>Vypnout notifikace</button></section>
+    <details class="tech-status"><summary>🛠 Technický stav aplikace</summary><p id="tech-summary">Načítám historii aktualizací…</p><div id="tech-history"></div><p class="muted-note">Historie je načítaná z veřejných běhů GitHub Actions. Podrobnosti chyby otevřeš přímo na GitHubu.</p></details>
     <footer><p><b>Metodika:</b> V hlavním přehledu jsou pouze okna, kde alespoň 3 ze 4 modelů splňují místní limity a žádný neukazuje výrazný exces. Navíc platí základní meteorologické filtry. Modely nejsou nezávislé a jejich shoda nezaručuje bezpečný let.</p><b>Bezpečnost:</b> Kandidátní okno je automatický screening, nikoli doporučení ke startu.
     Vždy ověř aktuální měření, výškový vítr, rotory, fronty a místní podmínky.
     Modelový vítr 10 m/80 m není měření na startovišti. Termika a XC nejsou spolehlivě vyhodnoceny.
     Semafory jsou orientační heuristika. Modelová výška promíchané vrstvy není garantovaný dostup a updraft není skutečné stoupání padáku.\n    Volby se ukládají přes Cloudflare KV. Sledované detaily se aktualizují s webem.</footer></main>
     <script>
     (()=>{{
+      const BUILT_AT={json.dumps(now.isoformat())};
+      const buildAge=()=>Date.now()-new Date(BUILT_AT).getTime();
+      const stale=document.getElementById("stale-warning");
+      const updateStale=()=>{{stale.hidden=buildAge()<=12*60*60*1000;}};
+      updateStale();
+      document.addEventListener("visibilitychange",()=>{{if(!document.hidden)updateStale();}});
+      async function loadTechnicalHistory(){{
+        const summary=document.getElementById("tech-summary"),history=document.getElementById("tech-history");
+        try{{
+          const url="https://api.github.com/repos/jmkozel/paragliding-weather/actions/workflows/daily.yml/runs?per_page=40";
+          const response=await fetch(url,{{headers:{{"Accept":"application/vnd.github+json"}},cache:"no-store"}});
+          if(!response.ok)throw Error("GitHub API HTTP "+response.status);
+          const payload=await response.json();
+          const runs=(payload.workflow_runs||[]).filter(r=>r.status==="completed");
+          const latest=runs[0],successful=runs.find(r=>r.conclusion==="success");
+          const fmt=t=>new Date(t).toLocaleString("cs-CZ",{{dateStyle:"short",timeStyle:"short"}});
+          summary.textContent="Poslední běh: "+(latest?fmt(latest.created_at)+" · "+(latest.conclusion==="success"?"úspěšný":"neúspěšný"):"bez záznamu")+". Poslední zcela úspěšný běh: "+(successful?fmt(successful.created_at):"nenalezen v posledních 40 bězích")+".";
+          const failures=runs.filter(r=>r.conclusion!=="success").slice(0,20);
+          history.replaceChildren();
+          if(!failures.length){{history.textContent="V posledních načtených bězích nejsou chyby.";return;}}
+          for(const r of failures){{
+            const entry=document.createElement("div");entry.className="tech-entry";
+            const link=document.createElement("a");link.href=r.html_url;link.target="_blank";link.rel="noopener noreferrer";
+            link.textContent="❌ "+fmt(r.created_at)+" · "+(r.conclusion||"neznámý stav");
+            entry.appendChild(link);const detail=document.createElement("small");detail.textContent=" · Otevřít podrobnosti běhu";entry.appendChild(detail);history.appendChild(entry);
+          }}
+        }}catch(e){{summary.textContent="Historii se nepodařilo načíst ("+e.message+"). Stav předpovědi ověř podle času aktualizace nahoře.";}}
+      }}
+      loadTechnicalHistory();
       const API='https://paragliding-control.jmkozel.workers.dev/preferences';
       const cards=[...document.querySelectorAll('.window')];
       const filters=[];
