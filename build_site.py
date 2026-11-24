@@ -242,9 +242,12 @@ def build():
     .risks.muted{{background:#f0f4f7;color:#526779}}
     .tech-status{{background:white;border-radius:10px;margin:14px 0;padding:14px;font-size:13px}}
     .tech-status p{{line-height:1.5}}
-    .tech-status a{{display:inline-block;margin:4px 0}}
-    .tech-entry{{padding:8px 0;border-top:1px solid #e6edf2}}
-    .tech-entry small{{color:#61758a}}
+    .tech-table{{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px}}
+    .tech-table th,.tech-table td{{padding:9px 5px;text-align:left;border-bottom:1px solid #e6edf2;white-space:nowrap}}
+    .tech-table th{{color:#61758a;font-size:11px}}
+    .tech-table td:last-child,.tech-table th:last-child{{text-align:right}}
+    .tech-ok{{color:#177245;font-weight:650}}.tech-fail{{color:#bd4141;font-weight:650}}
+    .tech-table a{{color:#175d87;text-decoration:underline}}
     .push-settings{{background:white;border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px}}
     .push-settings p{{color:#61758a}}
     .tracked-report{{background:#fff;border:1px solid #d9e4ee;border-radius:13px;overflow:hidden;margin:12px 0 20px;box-shadow:0 2px 6px #dce5ee66}}
@@ -312,7 +315,7 @@ def build():
     <div class="grid">{''.join(cards)}</div>{empty}{errorblock}
     <details><summary>Spravovat skryté dny a okna</summary><div id="restore-list"></div></details></div>
     <section class="push-settings"><b>🔔 Mobilní notifikace</b><p id="push-status">Kontroluji dostupnost…</p><button id="push-enable" hidden>Zapnout notifikace</button><button id="push-disable" hidden>Vypnout notifikace</button></section>
-    <details class="tech-status"><summary>🛠 Technický stav aplikace</summary><p id="tech-summary">Načítám historii aktualizací…</p><div id="tech-history"></div><p class="muted-note">Historie je načítaná z veřejných běhů GitHub Actions. Podrobnosti chyby otevřeš přímo na GitHubu.</p></details>
+    <details class="tech-status"><summary>🛠 Technický stav aplikace</summary><p id="tech-summary">Načítám historii aktualizací…</p><div id="tech-history"></div><p class="muted-note">Zobrazeno posledních 20 dokončených běhů z GitHub Actions. Odkaz Detail otevře záznam běhu na GitHubu.</p></details>
 
     <footer><p><b>Metodika:</b> V hlavním přehledu jsou pouze okna, kde alespoň 3 ze 4 modelů splňují místní limity a žádný neukazuje výrazný exces. Navíc platí základní meteorologické filtry. Modely nejsou nezávislé a jejich shoda nezaručuje bezpečný let.</p><b>Bezpečnost:</b> Kandidátní okno je automatický screening, nikoli doporučení ke startu.
     Vždy ověř aktuální měření, výškový vítr, rotory, fronty a místní podmínky.
@@ -333,20 +336,44 @@ def build():
           const response=await fetch(url,{{headers:{{"Accept":"application/vnd.github+json"}},cache:"no-store"}});
           if(!response.ok)throw Error("GitHub API HTTP "+response.status);
           const payload=await response.json();
-          const runs=(payload.workflow_runs||[]).filter(r=>r.status==="completed");
-          const latest=runs[0];
-          const fmt=t=>new Date(t).toLocaleString("cs-CZ",{{dateStyle:"short",timeStyle:"short"}});
-          summary.textContent="Poslední běh: "+(latest?fmt(latest.created_at)+" · "+(latest.conclusion==="success"?"úspěšný":"neúspěšný"):"bez záznamu")+".";
-          const failures=runs.filter(r=>r.conclusion!=="success").slice(0,20);
+          const runs=(payload.workflow_runs||[])
+            .filter(r=>r.status==="completed" && ["success","failure"].includes(r.conclusion))
+            .sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))
+            .slice(0,20);
+          summary.textContent="Posledních "+runs.length+" dokončených běhů, nejnovější nahoře.";
           history.replaceChildren();
-          if(!failures.length){{history.textContent="V posledních načtených bězích nejsou chyby.";return;}}
-          for(const r of failures){{
-            const entry=document.createElement("div");entry.className="tech-entry";
-            const link=document.createElement("a");link.href=r.html_url;link.target="_blank";link.rel="noopener noreferrer";
-            link.textContent="❌ "+fmt(r.created_at)+" · "+(r.conclusion||"neznámý stav");
-            entry.appendChild(link);const detail=document.createElement("small");detail.textContent=" · Otevřít podrobnosti běhu";entry.appendChild(detail);history.appendChild(entry);
+          if(!runs.length){{history.textContent="Zatím nejsou dostupné dokončené běhy.";return;}}
+          const table=document.createElement("table");table.className="tech-table";
+          const head=document.createElement("thead"),headRow=document.createElement("tr");
+          for(const label of ["Datum","Čas","Stav","Detail"]){{
+            const th=document.createElement("th");th.textContent=label;headRow.appendChild(th);
           }}
-        }}catch(e){{summary.textContent="Historii se nepodařilo načíst ("+e.message+"). Stav předpovědi ověř podle času aktualizace nahoře.";}}
+          head.appendChild(headRow);table.appendChild(head);
+          const body=document.createElement("tbody");
+          for(const run of runs){{
+            const date=new Date(run.created_at);
+            const row=document.createElement("tr");
+            const dateCell=document.createElement("td");
+            dateCell.textContent=date.toLocaleDateString("cs-CZ",{{day:"2-digit",month:"2-digit",year:"2-digit"}});
+            const timeCell=document.createElement("td");
+            timeCell.textContent=date.toLocaleTimeString("cs-CZ",{{hour:"2-digit",minute:"2-digit"}});
+            const stateCell=document.createElement("td");
+            const ok=run.conclusion==="success";
+            stateCell.textContent=ok?"● Úspěšné":"● Neúspěšné";
+            stateCell.className=ok?"tech-ok":"tech-fail";
+            const detailCell=document.createElement("td");
+            const link=document.createElement("a");
+            link.href=run.html_url;link.target="_blank";link.rel="noopener noreferrer";
+            link.textContent="Rozkliknout";link.setAttribute("aria-label","Detail běhu "+dateCell.textContent+" "+timeCell.textContent);
+            detailCell.appendChild(link);
+            for(const cell of [dateCell,timeCell,stateCell,detailCell])row.appendChild(cell);
+            body.appendChild(row);
+          }}
+          table.appendChild(body);history.appendChild(table);
+        }}catch(e){{
+          summary.textContent="Historii se nepodařilo načíst ("+e.message+"). Stav předpovědi ověř podle času aktualizace nahoře.";
+          history.replaceChildren();
+        }}
       }}
       loadTechnicalHistory();
       const API='https://paragliding-control.jmkozel.workers.dev/preferences';
