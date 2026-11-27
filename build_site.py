@@ -46,7 +46,8 @@ def flight_lights(site, data, group, comparison):
     # updraft is model grid-cell diagnostic, not actual paraglider climb rate.
     terrain=data.get("elevation")
     bl=avg("boundary_layer_height")
-    base=avg("convective_cloud_base")
+    bases=[v for v in vals("convective_cloud_base") if v>0 and (terrain is None or v>terrain)]
+    base=sum(bases)/len(bases) if bases else None
     top=avg("convective_cloud_top")
     up=avg("updraft")
     radiation=avg("shortwave_radiation")
@@ -71,9 +72,9 @@ def flight_lights(site, data, group, comparison):
     else:
         thermal=("orange","Model neposkytl výšku konvekční vrstvy; nelze spolehlivě určit dostup.")
     if usable is not None:
-        thermal=(thermal[0],thermal[1]+f" Základna konvekční oblačnosti přibližně {base:.0f} m n. m. ({usable:.0f} m nad modelovým terénem).")
+        thermal=(thermal[0],thermal[1]+f" Základna mraků přibližně {base:.0f} m n. m. ({usable:.0f} m nad modelovým terénem).")
     elif base is None:
-        thermal=(thermal[0],thermal[1]+" Základna kumulů není v datech dostupná; suchá termika je možná.")
+        thermal=(thermal[0],thermal[1]+" Základna mraků není v modelových datech dostupná; suchá termika je možná.")
     out["thermal"]={"level":thermal[0],"reason":thermal[1]}
     if thermal[0]=="red":
         xc=("red","Termické podmínky podle modelu nepříznivé.")
