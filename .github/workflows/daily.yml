@@ -1,8 +1,8 @@
 name: Paragliding forecast and public web
 on:
   schedule:
-    # Refresh website every three hours, plus 07:00 local daily.
-    - cron: '17 */3 * * *'
+    # Refresh website hourly, plus 07:00 local daily.
+    - cron: '17 * * * *'
     - cron: '0 5,6 * * *'
   workflow_dispatch:
 permissions:
@@ -49,11 +49,13 @@ jobs:
       - name: Send morning mobile notification
         if: ${{ success() }}
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
           PUSH_API_TOKEN: ${{ secrets.PUSH_API_TOKEN }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
         run: |
-          if [ "$(TZ=Europe/Prague date +%H)" = "07" ]; then
-            python morning_push.py || echo "Morning push failed; existing email delivery unchanged."
+          if [ "$EVENT_NAME" = "schedule" ] && [ "$SCHEDULE" = "0 5,6 * * *" ] && [ "$(TZ=Europe/Prague date +%H)" = "07" ]; then
+            python morning_push.py
           else
             echo "Outside 07:00 Prague; no morning push."
           fi
@@ -75,7 +77,7 @@ jobs:
         run: python -m py_compile tracking_delivery.py logistics.py forecast.py preferences.py
       - name: Install Web Push library
         run: python -m pip install "pywebpush>=2.0,<3"
-      - name: Monitor watched windows and send due emails and pushes
+      - name: Monitor watched windows and send due pushes
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
